@@ -307,8 +307,8 @@
                 <!-- หมายเหตุอธิบายเงื่อนไข -->
                 <div class="mt-8 text-xs text-gray-500 bg-gray-50 p-3 rounded border border-gray-200">
                     <p><strong>*เงื่อนไขการแบ่งรายได้ (คำนวณอัตโนมัติ):</strong></p>
-                    <p>- นวดเท้า (150 บ.): รพ. 60 บ., ผู้นวด 90 บ. <span class="text-amber-600 font-semibold">(ยกเว้นเคสแรกของวันของผู้นวดแต่ละคน ผู้นวดได้เต็ม 150 บ. รพ. 0 บ.)</span></p>
-                    <p>- นวดบ่า (120 บ.): รพ. 48 บ., ผู้นวด 70 บ., เข้ากองกลาง 2 บ.</p>
+                    <p>- นวดเท้า (150 บ.): รพ. 60 บ., ผู้นวด 90 บ. <span class="text-amber-600 font-semibold">(ยกเว้นเคสแรกของวัน ผู้นวดได้เต็ม 150 บ. รพ. 0 บ.)</span></p>
+                    <p>- นวดบ่า (120 บ.): รพ. 48 บ., ผู้นวด 70 บ., เข้ากองกลาง 2 บ. <span class="text-blue-600 font-semibold">(กรณีพิเศษ: หากผู้นวดไม่มีเคสนวดเท้าเลยทั้งวัน เคสนวดบ่าเคสแรกจะได้รับเต็ม 120 บ. ไม่หักเข้า รพ. และกองกลาง)</span></p>
                 </div>
             </div>
         </div>
@@ -467,8 +467,12 @@
                             // 1. เรียงลำดับตามเวลาเริ่มนวด (Chronological order) เพื่อหาเคสแรกได้ถูกต้อง
                             byMasseuse[m].sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')));
                             
-                            // 2. ตัวแปรเก็บสถานะว่า "วันนี้นวดเท้าให้ใครไปแล้วหรือยัง?"
+                            // 2. ตัวแปรเก็บสถานะ
                             let foundFirstFoot = false;
+                            let foundFirstShoulder = false; // สำหรับดักเคสนวดบ่าเคสแรก
+                            
+                            // 3. ตรวจสอบล่วงหน้าว่า "วันนี้หมอคนนี้มีเคสนวดเท้าหรือไม่"
+                            const hasFootMassageToday = byMasseuse[m].some(r => (r.type || '').includes('นวดเท้า'));
                             
                             byMasseuse[m].forEach(record => {
                                 // รีเซ็ตยอดเงินเดิมก่อนคำนวณใหม่
@@ -482,9 +486,19 @@
                                 // -- คำนวณส่วน นวดบ่า (120 บาท) --
                                 if (typeStr.includes('นวดบ่า')) {
                                     record.price += 120;
-                                    record.masseuseCut += 70;
-                                    record.hospitalCut += 48;
-                                    record.centralCut += 2;
+                                    
+                                    // ตรวจสอบเงื่อนไขพิเศษ: ไม่มีนวดเท้าทั้งวัน และเป็นนวดบ่าเคสแรก
+                                    if (!hasFootMassageToday && !foundFirstShoulder) {
+                                        record.masseuseCut += 120;
+                                        record.hospitalCut += 0;
+                                        record.centralCut += 0;
+                                        foundFirstShoulder = true; // ป้องกันเคสที่สองได้สิทธิ์ซ้ำ
+                                    } else {
+                                        // แบ่งตามปกติ
+                                        record.masseuseCut += 70;
+                                        record.hospitalCut += 48;
+                                        record.centralCut += 2;
+                                    }
                                 } 
                                 
                                 // -- คำนวณส่วน นวดเท้า (150 บาท) --
@@ -593,6 +607,10 @@
 
                     isLoading.value = true;
                     
+                    // 1. ถ่ายภาพข้อมูลเดิมทั้งหมดเก็บไว้ก่อน เพื่อเปรียบเทียบว่าเคสอื่นโดนกระทบไหม
+                    const oldRecordsMap = new Map();
+                    records.value.forEach(r => oldRecordsMap.set(r.id, JSON.stringify(r)));
+                    
                     const recordData = {
                         ...form.value,
                         type: form.value.type.join(', '),
@@ -613,6 +631,7 @@
 
                     if (sheetUrl.value) {
                         try {
+                            // 2. ส่งข้อมูลเคสที่ผู้ใช้กำลัง บันทึก/แก้ไข ไปยัง Sheet ตามปกติ
                             const formData = new FormData();
                             formData.append('action', editingId.value ? 'UPDATE' : 'CREATE');
                             formData.append('data', JSON.stringify(recordData));
@@ -621,6 +640,21 @@
                                 method: 'POST',
                                 mode: 'no-cors',
                                 body: formData,
+                            });
+                            
+                            // 3. ตรวจสอบว่ามี "เคสเก่า" ที่ถูกระบบคำนวณยอดส่วนแบ่งใหม่หรือไม่ (เช่น โดนเลื่อนเป็นเคสที่สอง)
+                            records.value.forEach(r => {
+                                if (r.id === recordData.id) return; // ข้ามเคสที่เพิ่งส่งไปเมื่อกี้
+                                const oldString = oldRecordsMap.get(r.id);
+                                const newString = JSON.stringify(r);
+                                
+                                // ถ้าตัวเลขยอดเงินถูกคำนวณเปลี่ยนไป ให้ส่ง UPDATE ไปแก้ใน Sheet อัตโนมัติ
+                                if (oldString && oldString !== newString) {
+                                    const updateFormData = new FormData();
+                                    updateFormData.append('action', 'UPDATE');
+                                    updateFormData.append('data', newString);
+                                    fetch(sheetUrl.value, { method: 'POST', mode: 'no-cors', body: updateFormData }).catch(e=>console.log(e));
+                                }
                             });
                         } catch (e) {
                             console.error('Sheet Sync Error', e);
@@ -642,6 +676,10 @@
 
                 const deleteRecord = (id) => {
                     if(confirm('คุณแน่ใจหรือไม่ที่จะลบรายการนี้?')) {
+                        // 1. ถ่ายภาพข้อมูลก่อนลบ
+                        const oldRecordsMap = new Map();
+                        records.value.forEach(r => oldRecordsMap.set(r.id, JSON.stringify(r)));
+
                         records.value = records.value.filter(r => r.id !== id);
                         
                         // คำนวณใหม่หลังจากลบ (เพราะถ้าลบเคสแรกไป เคสที่ 2 จะต้องถูกเลื่อนขึ้นมาเป็นเคสแรกแทน)
@@ -650,10 +688,24 @@
                         showToast('ลบรายการสำเร็จ');
                         
                         if (sheetUrl.value) {
+                            // 2. ส่งคำสั่งลบไปที่ Sheet
                             const formData = new FormData();
                             formData.append('action', 'DELETE');
                             formData.append('id', id);
                             fetch(sheetUrl.value, { method: 'POST', mode: 'no-cors', body: formData }).catch(e=>console.log(e));
+
+                            // 3. ตรวจสอบว่ามีเคสอื่นที่ต้องสลับขึ้นมาเป็น "เคสแรก" แทนหรือไม่
+                            records.value.forEach(r => {
+                                const oldString = oldRecordsMap.get(r.id);
+                                const newString = JSON.stringify(r);
+                                
+                                if (oldString && oldString !== newString) {
+                                    const updateFormData = new FormData();
+                                    updateFormData.append('action', 'UPDATE');
+                                    updateFormData.append('data', newString);
+                                    fetch(sheetUrl.value, { method: 'POST', mode: 'no-cors', body: updateFormData }).catch(e=>console.log(e));
+                                }
+                            });
                         }
                     }
                 };
