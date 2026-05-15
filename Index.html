@@ -132,13 +132,11 @@
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-semibold text-gray-800">รายการนวดล่าสุด</h2>
                         <div class="flex flex-col items-end gap-2">
-                            <!-- ปรับข้อความให้นับแยกระหว่างของวันนี้ กับ ทั้งหมด -->
                             <span class="text-xs sm:text-sm text-blue-700 bg-blue-100 px-3 py-1.5 rounded-lg font-medium">
                                 ของวันที่เลือก: {{ filteredRecords.length }} รายการ (จากทั้งหมด {{ records.length }})
                             </span>
                             <div class="flex items-center gap-2">
                                 <label class="text-sm text-gray-600">กรองวันที่:</label>
-                                <!-- เพิ่มปุ่มล้างวันที่ (Clear) โดยใช้คุณสมบัติของ input date หรือให้ผู้ใช้ลบค่าได้ -->
                                 <input type="date" v-model="filterDate" class="border-gray-300 rounded-lg shadow-sm p-1.5 border text-sm" title="ลบวันที่ออกเพื่อดูข้อมูลทั้งหมด">
                             </div>
                         </div>
@@ -148,7 +146,6 @@
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50 sticky top-0">
                                 <tr>
-                                    <!-- เปลี่ยนคอลัมน์เวลา ให้แสดง วันที่ ด้วย -->
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">วัน/เวลา</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ชื่อผู้ป่วย</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ประเภท</th>
@@ -167,7 +164,6 @@
                                 </tr>
                                 <tr v-for="record in sortedFilteredRecords" :key="record.id" class="hover:bg-green-50 transition-colors">
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                        <!-- นำวันที่มาแสดงให้เห็นชัดเจน ป้องกันการสับสนว่าหายไปไหน -->
                                         <div class="text-xs text-green-700 font-medium pb-1">{{ formatDate(record.date) }}</div>
                                         <div class="text-gray-600">{{ record.startTime }} - {{ record.endTime }}</div>
                                     </td>
@@ -243,7 +239,7 @@
                     <!-- เงินเข้าระบบ -->
                     <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
                         <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2 border-b pb-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" /><path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clip-rule="evenodd" /></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 00-2-2v1h16V6a2 2 0 00-2-2H4z" /><path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clip-rule="evenodd" /></svg>
                             สรุปการกระจายรายได้
                         </h3>
                         <div class="space-y-3">
@@ -310,7 +306,7 @@
                 
                 <!-- หมายเหตุอธิบายเงื่อนไข -->
                 <div class="mt-8 text-xs text-gray-500 bg-gray-50 p-3 rounded border border-gray-200">
-                    <p><strong>*เงื่อนไขการแบ่งรายได้:</strong></p>
+                    <p><strong>*เงื่อนไขการแบ่งรายได้ (คำนวณอัตโนมัติ):</strong></p>
                     <p>- นวดเท้า (150 บ.): รพ. 60 บ., ผู้นวด 90 บ. <span class="text-amber-600 font-semibold">(ยกเว้นเคสแรกของวันของผู้นวดแต่ละคน ผู้นวดได้เต็ม 150 บ. รพ. 0 บ.)</span></p>
                     <p>- นวดบ่า (120 บ.): รพ. 48 บ., ผู้นวด 70 บ., เข้ากองกลาง 2 บ.</p>
                 </div>
@@ -360,7 +356,6 @@
                 
                 const newMasseuseName = ref('');
                 
-                // ฟังก์ชันดึงข้อมูลจากเครื่องอย่างปลอดภัย (ป้องกันจอขาวกรณีข้อมูลเก่าพัง)
                 const getSafeLocalStorage = (key, defaultVal) => {
                     try {
                         const item = localStorage.getItem(key);
@@ -385,7 +380,7 @@
                     patientName: '',
                     startTime: '',
                     endTime: '',
-                    type: [], // เปลี่ยนเป็น Array เพื่อรองรับการเลือกหลายอัน
+                    type: [],
                     masseuse: '',
                     paymentMethod: 'เงินสด'
                 };
@@ -446,77 +441,85 @@
                     form.value.endTime = `${endHours}:${endMins}`;
                 };
 
-                // ฟังก์ชันคำนวณส่วนแบ่งของทั้งวันใหม่ เพื่อให้ถูกต้องเสมอ (แม้จะมีการลบหรือแก้ไขข้อมูล)
-                const recalculateSplitsForDate = (date) => {
-                    // ดึงรายการของวันนี้ทั้งหมด
-                    const dayRecords = (records.value || []).filter(r => r.date === date);
-                    
-                    // จัดกลุ่มตามผู้นวด
-                    const byMasseuse = {};
-                    dayRecords.forEach(r => {
-                        const m = r.masseuse || 'ไม่ระบุ';
-                        if (!byMasseuse[m]) byMasseuse[m] = [];
-                        byMasseuse[m].push(r);
+                // ฟังก์ชันใหม่: สแกนข้อมูลทั้งหมด จัดกลุ่มตามวันและผู้นวด เพื่อเช็ค 'เคสแรก' อย่างแม่นยำ
+                const recalculateAllSplits = () => {
+                    // จัดกลุ่มตามวันที่ทั้งหมดในระบบ
+                    const recordsByDate = {};
+                    (records.value || []).forEach(r => {
+                        if (!recordsByDate[r.date]) recordsByDate[r.date] = [];
+                        recordsByDate[r.date].push(r);
                     });
 
-                    // วนลูปคำนวณใหม่
-                    for (const m in byMasseuse) {
-                        // เรียงตามเวลาเริ่มนวดอย่างปลอดภัย (ป้องกัน Error กรณีไม่ได้ใส่เวลามา)
-                        byMasseuse[m].sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')));
+                    // วนลูปคำนวณใหม่ทีละวัน
+                    for (const date in recordsByDate) {
+                        const dayRecords = recordsByDate[date];
                         
-                        let foundFirstFoot = false;
-                        
-                        byMasseuse[m].forEach(record => {
-                            // รีเซ็ตค่าก่อนคำนวณรอบใหม่
-                            record.price = 0;
-                            record.masseuseCut = 0;
-                            record.hospitalCut = 0;
-                            record.centralCut = 0;
-
-                            const typeStr = record.type || '';
-
-                            // คำนวณส่วนนวดบ่า
-                            if (typeStr.includes('นวดบ่า')) {
-                                record.price += 120;
-                                record.masseuseCut += 70;
-                                record.hospitalCut += 48;
-                                record.centralCut += 2;
-                            } 
-                            
-                            // คำนวณส่วนนวดเท้า
-                            if (typeStr.includes('นวดเท้า')) {
-                                record.price += 150;
-                                record.centralCut += 0;
-                                
-                                if (!foundFirstFoot) {
-                                    // เคสแรกของวัน
-                                    record.masseuseCut += 150;
-                                    record.hospitalCut += 0;
-                                    foundFirstFoot = true;
-                                } else {
-                                    // เคสที่ 2 เป็นต้นไป
-                                    record.masseuseCut += 90;
-                                    record.hospitalCut += 60;
-                                }
-                            }
+                        // จัดกลุ่มตามผู้นวดในวันนั้นๆ
+                        const byMasseuse = {};
+                        dayRecords.forEach(r => {
+                            const m = r.masseuse || 'ไม่ระบุ';
+                            if (!byMasseuse[m]) byMasseuse[m] = [];
+                            byMasseuse[m].push(r);
                         });
+
+                        // วนลูปคำนวณยอดเงินของผู้นวดแต่ละคนในวันนั้นๆ
+                        for (const m in byMasseuse) {
+                            // 1. เรียงลำดับตามเวลาเริ่มนวด (Chronological order) เพื่อหาเคสแรกได้ถูกต้อง
+                            byMasseuse[m].sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')));
+                            
+                            // 2. ตัวแปรเก็บสถานะว่า "วันนี้นวดเท้าให้ใครไปแล้วหรือยัง?"
+                            let foundFirstFoot = false;
+                            
+                            byMasseuse[m].forEach(record => {
+                                // รีเซ็ตยอดเงินเดิมก่อนคำนวณใหม่
+                                record.price = 0;
+                                record.masseuseCut = 0;
+                                record.hospitalCut = 0;
+                                record.centralCut = 0;
+
+                                const typeStr = record.type || '';
+
+                                // -- คำนวณส่วน นวดบ่า (120 บาท) --
+                                if (typeStr.includes('นวดบ่า')) {
+                                    record.price += 120;
+                                    record.masseuseCut += 70;
+                                    record.hospitalCut += 48;
+                                    record.centralCut += 2;
+                                } 
+                                
+                                // -- คำนวณส่วน นวดเท้า (150 บาท) --
+                                if (typeStr.includes('นวดเท้า')) {
+                                    record.price += 150;
+                                    record.centralCut += 0; // นวดเท้าไม่มีกองกลาง
+                                    
+                                    // ตรวจสอบอย่างรัดกุมว่าเป็น "นวดเท้าเคสแรกของวัน" หรือไม่
+                                    if (!foundFirstFoot) {
+                                        // เป็นเคสแรก: หมอได้เต็ม 150, รพ. ไม่ได้
+                                        record.masseuseCut += 150;
+                                        record.hospitalCut += 0;
+                                        
+                                        // ตั้งสถานะเป็น true เพื่อให้เคสต่อไปตกไปอยู่ในเงื่อนไขด้านล่าง
+                                        foundFirstFoot = true; 
+                                    } else {
+                                        // เป็นเคสที่ 2 เป็นต้นไปในวันเดียวกัน: แบ่งตามปกติ
+                                        record.masseuseCut += 90;
+                                        record.hospitalCut += 60;
+                                    }
+                                }
+                            });
+                        }
                     }
                 };
 
-                // เพิ่มความยืดหยุ่นในการแปลงวันที่ จาก Sheet (แก้ปัญหา Timezone เคลื่อน)
                 const normalizeDate = (dateStr) => {
                     if (!dateStr) return '';
                     let str = String(dateStr).trim();
-                    
-                    // ป้องกัน Timezone UTC ทำให้วันที่ถอยหลังไป 1 วัน (เช่น 2026-05-14T17:00:00Z)
                     if (str.includes('T')) {
                         str = str.split('T')[0];
                     }
-
                     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
                         return str;
                     }
-
                     if (str.includes('/')) {
                         const parts = str.split('/');
                         if (parts.length === 3) {
@@ -528,7 +531,6 @@
                             return `${year}-${month}-${day}`;
                         }
                     }
-                    
                     const d = new Date(str);
                     if (!isNaN(d.getTime())) {
                         const year = d.getFullYear();
@@ -567,7 +569,10 @@
                                 if(!masseuses.value.includes(m)) masseuses.value.push(m);
                             });
                             
+                            // สั่งให้คำนวณส่วนแบ่งใหม่ทั้งหมดทันทีที่โหลดข้อมูลเสร็จ
+                            recalculateAllSplits();
                             saveToLocal();
+                            
                             showToast('โหลดข้อมูลจาก Google Sheet สำเร็จ');
                         } else if (data.error) {
                             throw new Error(data.error);
@@ -590,12 +595,11 @@
                     
                     const recordData = {
                         ...form.value,
-                        type: form.value.type.join(', '), // แปลง Array เป็นข้อความเมื่อบันทึกลงฐานข้อมูล (เพื่อให้เข้ากันได้กับ Google Sheet และข้อมูลเดิม)
+                        type: form.value.type.join(', '),
                         id: editingId.value || Date.now().toString(),
                         timestamp: new Date().toISOString()
                     };
 
-                    // Update Local State
                     if (editingId.value) {
                         const index = records.value.findIndex(r => r.id === editingId.value);
                         if(index !== -1) records.value[index] = recordData;
@@ -603,18 +607,16 @@
                         records.value.push(recordData);
                     }
 
-                    // Recalculate splits for this date to ensure rules are met
-                    recalculateSplitsForDate(form.value.date);
+                    // สั่งสแกนและคำนวณใหม่ "ทั้งหมด" เผื่อกรณีมีการแก้ไขวันที่หรือชื่อหมอ
+                    recalculateAllSplits();
                     saveToLocal();
 
-                    // Optional: Sync to Google Sheets
                     if (sheetUrl.value) {
                         try {
                             const formData = new FormData();
                             formData.append('action', editingId.value ? 'UPDATE' : 'CREATE');
                             formData.append('data', JSON.stringify(recordData));
                             
-                            // ส่งข้อมูลแบบ no-cors ป้องกันติดปัญหา CORS ในเบราว์เซอร์
                             await fetch(sheetUrl.value, {
                                 method: 'POST',
                                 mode: 'no-cors',
@@ -632,7 +634,6 @@
 
                 const editRecord = (record) => {
                     form.value = { ...record };
-                    // แปลงข้อความกลับมาเป็น Array เพื่อให้แสดงในปุ่มแบบ Toggle ถูกต้อง
                     form.value.type = record.type ? record.type.split(',').map(t => t.trim()) : [];
                     editingId.value = record.id;
                     currentTab.value = 'form';
@@ -641,17 +642,13 @@
 
                 const deleteRecord = (id) => {
                     if(confirm('คุณแน่ใจหรือไม่ที่จะลบรายการนี้?')) {
-                        const record = records.value.find(r => r.id === id);
-                        const recordDate = record.date;
-                        
                         records.value = records.value.filter(r => r.id !== id);
                         
-                        // Recalculate in case the deleted item was a "First Foot Massage"
-                        recalculateSplitsForDate(recordDate);
+                        // คำนวณใหม่หลังจากลบ (เพราะถ้าลบเคสแรกไป เคสที่ 2 จะต้องถูกเลื่อนขึ้นมาเป็นเคสแรกแทน)
+                        recalculateAllSplits();
                         saveToLocal();
                         showToast('ลบรายการสำเร็จ');
                         
-                        // Sync Delete
                         if (sheetUrl.value) {
                             const formData = new FormData();
                             formData.append('action', 'DELETE');
@@ -662,7 +659,7 @@
                 };
 
                 const resetForm = () => {
-                    form.value = { ...defaultForm, date: filterDate.value, type: [] }; // ให้จำวันที่กำลังเลือกอยู่ และเคลียร์การเลือกประเภท
+                    form.value = { ...defaultForm, date: filterDate.value, type: [] };
                     editingId.value = null;
                 };
 
@@ -677,14 +674,12 @@
                     newMasseuseName.value = '';
                 };
 
-                // แก้ไขให้ถ้าไม่ได้เลือกวันที่ ให้โชว์ข้อมูลทั้งหมด
                 const filteredRecords = computed(() => {
                     if (!filterDate.value) return records.value || [];
                     return (records.value || []).filter(r => r.date === filterDate.value);
                 });
 
                 const sortedFilteredRecords = computed(() => {
-                    // เรียงตามวันที่ล่าสุดก่อน แล้วค่อยเรียงตามเวลา
                     return [...filteredRecords.value].sort((a, b) => {
                         const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
                         if (dateCompare !== 0) return dateCompare;
@@ -714,22 +709,22 @@
                         if (typeStr.includes('นวดเท้า')) result.footCases++;
                         if (typeStr.includes('นวดบ่า')) result.shoulderCases++;
                         
-                        result.totalRevenue += r.price;
-                        result.totalHospital += r.hospitalCut;
-                        result.totalCentral += r.centralCut;
-                        result.totalMasseuse += r.masseuseCut;
+                        // ใช้ยอดเงินที่ถูกคำนวณไว้อย่างแม่นยำจาก recalculateAllSplits()
+                        result.totalRevenue += r.price || 0;
+                        result.totalHospital += r.hospitalCut || 0;
+                        result.totalCentral += r.centralCut || 0;
+                        result.totalMasseuse += r.masseuseCut || 0;
 
-                        if (r.paymentMethod === 'เงินสด') result.cashTotal += r.price;
-                        if (r.paymentMethod === 'โอน') result.transferTotal += r.price;
+                        if (r.paymentMethod === 'เงินสด') result.cashTotal += r.price || 0;
+                        if (r.paymentMethod === 'โอน') result.transferTotal += r.price || 0;
 
-                        // breakdown per masseuse
                         if (!mStats[r.masseuse]) {
                             mStats[r.masseuse] = { name: r.masseuse, totalCases: 0, footCases: 0, shoulderCases: 0, totalCut: 0 };
                         }
                         mStats[r.masseuse].totalCases++;
                         if (typeStr.includes('นวดเท้า')) mStats[r.masseuse].footCases++;
                         if (typeStr.includes('นวดบ่า')) mStats[r.masseuse].shoulderCases++;
-                        mStats[r.masseuse].totalCut += r.masseuseCut;
+                        mStats[r.masseuse].totalCut += r.masseuseCut || 0;
                     });
 
                     result.masseuseBreakdown = Object.values(mStats).sort((a,b) => b.totalCases - a.totalCases);
@@ -748,13 +743,13 @@
                     html2pdf().set(opt).from(element).save();
                 };
 
-                // Watch Date change to auto-update form date
                 watch(filterDate, (newVal) => {
                     if(!editingId.value) form.value.date = newVal;
                 });
 
-                // ดึงข้อมูลอัตโนมัติตอนเปิดเว็บ
                 onMounted(() => {
+                    // ถ้าในเครื่องมีข้อมูลอยู่แล้ว ให้คำนวณเผื่อไว้ก่อนเลยก่อนดึงจาก Sheet
+                    recalculateAllSplits();
                     loadDataFromSheet();
                 });
 
@@ -767,7 +762,6 @@
             }
         });
 
-        // ระบบป้องกันหน้าจอขาวขั้นสูงสุด (ดักจับ Fatal Error)
         app.config.errorHandler = (err) => {
             console.error('System Error:', err);
             alert("⚠️ ระบบพบข้อมูลที่ผิดปกติจนทำให้หน้าจอขาว\nสาเหตุ: " + err.message + "\n\nระบบจะทำการล้างข้อมูลแคชที่เสียหายและรีสตาร์ทอัตโนมัติเพื่อแก้ไขปัญหาครับ");
