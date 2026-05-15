@@ -3,414 +3,614 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Massage Dashboard | Cloud Sync Fix</title>
+    <title>ระบบบันทึกรายการนวดประจำวัน</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Kanit', sans-serif; }
+        body { font-family: 'Prompt', sans-serif; background-color: #f0fdf4; color: #1f2937; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        /* ซ่อนปุ่มตอน Print/PDF */
         @media print {
             .no-print { display: none !important; }
-            .card { border: 1px solid #eee !important; box-shadow: none !important; margin-bottom: 1rem; }
-            body { background-color: white !important; padding: 0 !important; }
         }
-        .toast-enter { transform: translateY(100px); opacity: 0; }
-        .toast-active { transform: translateY(0); opacity: 1; transition: all 0.3s ease; }
-        .pulse-green { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulse-green 2s infinite; }
-        .pulse-red { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); animation: pulse-red 2s infinite; }
-        @keyframes pulse-green { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
-        @keyframes pulse-red { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen text-slate-900 pb-10">
+<body class="min-h-screen">
+    <div id="app" class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <!-- Header -->
+        <header class="flex flex-col sm:flex-row justify-between items-center mb-8 bg-green-700 text-white p-4 sm:p-6 rounded-2xl shadow-lg">
+            <div class="flex items-center gap-3 mb-4 sm:mb-0">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <h1 class="text-2xl sm:text-3xl font-bold">ระบบบันทึกรายการนวด</h1>
+            </div>
+            <div class="flex gap-2">
+                <button @click="currentTab = 'form'" :class="currentTab === 'form' ? 'bg-white text-green-700' : 'bg-green-600 hover:bg-green-500'" class="px-4 py-2 rounded-lg font-medium transition duration-200 text-sm sm:text-base">บันทึกข้อมูล</button>
+                <button @click="currentTab = 'summary'" :class="currentTab === 'summary' ? 'bg-white text-green-700' : 'bg-green-600 hover:bg-green-500'" class="px-4 py-2 rounded-lg font-medium transition duration-200 text-sm sm:text-base">สรุปรายวัน</button>
+                <button @click="showSettings = true" class="bg-green-800 hover:bg-green-900 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm sm:text-base">ตั้งค่า (Sheets)</button>
+            </div>
+        </header>
 
-<script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxZcljBpq3ayN0DgE6crMJaWjFcdN-9iW-NWInFK9udMO419TCDnBm0kkGafHiDGZSi/exec";
-    
-    const CONFIG = {
-        FOOT: { label: 'นวดเท้า', duration: 45, price: 150, split: { staff: 90, hospital: 60, central: 0 } },
-        SHOULDER: { label: 'นวดบ่า', duration: 30, price: 120, split: { staff: 70, hospital: 48, central: 2 } }
-    };
-
-    let records = [];
-    let staffList = JSON.parse(localStorage.getItem('massage_staff_list') || '["สมชาย", "สมหญิง", "วิชัย"]');
-    let editingId = null;
-    let syncStatus = 'waiting'; 
-
-    function showToast(message, type = 'info') {
-        const container = document.getElementById('toastContainer');
-        const toast = document.createElement('div');
-        toast.className = `${type === 'success' ? 'bg-emerald-600' : type === 'error' ? 'bg-red-600' : 'bg-indigo-600'} p-4 rounded-2xl shadow-xl flex items-center gap-3 min-w-[280px] toast-enter text-white transition-all duration-300 z-[100]`;
-        toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : 'info'}" class="w-5 h-5"></i><span class="font-medium">${message}</span>`;
-        container.appendChild(toast);
-        lucide.createIcons();
-        setTimeout(() => toast.classList.add('toast-active'), 10);
-        setTimeout(() => { toast.classList.remove('toast-active'); setTimeout(() => toast.remove(), 300); }, 3000);
-    }
-
-    /* แก้ไขฟังก์ชันดึงข้อมูล: นำ no-cors ออกเพื่อให้สามารถอ่าน JSON ได้ */
-    async function fetchDataFromCloud() {
-        updateSyncUI('syncing');
-        try {
-            // ดึงข้อมูลแบบปกติ (GET) เพื่อให้เบราว์เซอร์อนุญาตให้เข้าถึง Body ของข้อมูล
-            const response = await fetch(SCRIPT_URL);
-            const cloudData = await response.json();
+        <div v-show="currentTab === 'form'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            if (Array.isArray(cloudData)) {
-                records = cloudData;
-                renderRecords();
-                updateSummary();
-                updateSyncUI('success');
-                showToast('ดึงข้อมูลล่าสุดจาก Google Sheets สำเร็จ', 'success');
-            }
-        } catch (err) {
-            console.error("Fetch error:", err);
-            updateSyncUI('error');
-            showToast('ไม่สามารถดึงข้อมูลจาก Cloud ได้ (ตรวจสอบเน็ตหรือการ Deploy)', 'error');
-        }
-    }
-
-    async function callCloud(action, data) {
-        updateSyncUI('syncing');
-        try {
-            // สำหรับ POST ข้อมูลไปบันทึก ใช้ no-cors ได้เพราะเราไม่ต้องการอ่าน Body ที่ตอบกลับมา
-            await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                body: JSON.stringify({ action, data })
-            });
-            updateSyncUI('success');
-            return true;
-        } catch (err) {
-            updateSyncUI('error');
-            return false;
-        }
-    }
-
-    function updateSyncUI(status) {
-        syncStatus = status;
-        const dots = document.querySelectorAll('.sync-dot');
-        const texts = document.querySelectorAll('.sync-text');
-        const configs = {
-            waiting: { color: 'bg-slate-300', text: 'รอซิงค์...' },
-            syncing: { color: 'bg-blue-500 animate-pulse', text: 'กำลังโหลด...' },
-            success: { color: 'bg-emerald-500 pulse-green', text: 'เชื่อมต่อแล้ว' },
-            error: { color: 'bg-red-500 pulse-red', text: 'ขัดข้อง' }
-        };
-        dots.forEach(d => d.className = `w-3 h-3 rounded-full ${configs[status].color} sync-dot`);
-        texts.forEach(t => t.innerText = configs[status].text);
-    }
-</script>
-
-<div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-[9999] no-print"></div>
-
-<nav class="bg-indigo-900 text-white p-4 sticky top-0 z-50 no-print shadow-lg">
-    <div class="max-w-6xl mx-auto flex justify-between items-center">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center">
-                <i data-lucide="activity" class="text-white"></i>
-            </div>
-            <h1 class="font-bold text-lg hidden sm:block">Massage Cloud v2.0</h1>
-        </div>
-        <div class="flex gap-2">
-            <button onclick="showView('form')" class="px-4 py-2 hover:bg-white/20 rounded-xl text-sm font-medium flex items-center gap-2 transition-all">
-                <i data-lucide="plus-circle" class="w-4 h-4"></i> บันทึก
-            </button>
-            <button onclick="showView('summary')" class="px-4 py-2 hover:bg-white/20 rounded-xl text-sm font-medium flex items-center gap-2 transition-all">
-                <i data-lucide="bar-chart-3" class="w-4 h-4"></i> สรุปรายวัน
-            </button>
-            <button onclick="fetchDataFromCloud()" class="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all">
-                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-            </button>
-        </div>
-    </div>
-</nav>
-
-<main class="max-w-6xl mx-auto p-4 md:p-8">
-    
-    <div id="view-form" class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <!-- Sidebar Form -->
-        <div class="lg:col-span-4">
-            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 no-print">
-                <h2 id="formTitle" class="text-xl font-bold mb-6 flex items-center gap-2 text-slate-800">
-                    <i data-lucide="file-edit" class="text-indigo-600"></i> บันทึกรายการ
-                </h2>
-                <form id="mainForm" onsubmit="handleSubmit(event)" class="space-y-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase">วันที่บันทึก</label>
-                        <input type="date" id="date" required onchange="renderRecords(); updateSummary();" class="w-full p-3 bg-slate-50 border-0 rounded-2xl focus:ring-2 focus:ring-indigo-500 font-medium">
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase">ผู้นวด</label>
-                        <div class="flex gap-2">
-                            <select id="staffName" required class="flex-1 p-3 bg-slate-50 border-0 rounded-2xl focus:ring-2 focus:ring-indigo-500 font-medium"></select>
-                            <button type="button" onclick="addStaff()" class="p-3 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-100 transition-colors"><i data-lucide="user-plus" class="w-5 h-5"></i></button>
+            <!-- Left: Input Form -->
+            <div class="lg:col-span-1">
+                <div class="glass-panel p-6 rounded-2xl relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-green-500"></div>
+                    <h2 class="text-xl font-semibold mb-4 flex items-center gap-2 text-green-800">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" /></svg>
+                        {{ editingId ? 'แก้ไขรายการ' : 'เพิ่มรายการใหม่' }}
+                    </h2>
+                    <form @submit.prevent="saveRecord" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">วันที่</label>
+                            <input type="date" v-model="form.date" required class="w-full border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 p-2.5 border">
                         </div>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase">ชื่อผู้ป่วย</label>
-                        <input type="text" id="patientName" placeholder="ระบุชื่อผู้ป่วย" required class="w-full p-3 bg-slate-50 border-0 rounded-2xl focus:ring-2 focus:ring-indigo-500">
-                    </div>
-                    <div class="space-y-2">
-                        <label class="text-[10px] font-bold text-slate-400 uppercase">ประเภทการนวด (เลือกได้มากกว่า 1)</label>
-                        <label class="flex items-center gap-3 p-3 border rounded-2xl cursor-pointer hover:bg-slate-50 transition-colors group">
-                            <input type="checkbox" id="type_foot" onchange="updateTimeAndPrice()" class="w-5 h-5 accent-indigo-600">
-                            <span class="text-sm font-medium group-hover:text-indigo-600">นวดเท้า (45 นาที) - 150.-</span>
-                        </label>
-                        <label class="flex items-center gap-3 p-3 border rounded-2xl cursor-pointer hover:bg-slate-50 transition-colors group">
-                            <input type="checkbox" id="type_shoulder" onchange="updateTimeAndPrice()" class="w-5 h-5 accent-purple-600">
-                            <span class="text-sm font-medium group-hover:text-purple-600">นวดบ่า (30 นาที) - 120.-</span>
-                        </label>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="space-y-1">
-                            <label class="text-[10px] font-bold text-slate-400">เริ่ม</label>
-                            <input type="time" id="startTime" required onchange="updateTimeAndPrice()" class="w-full p-3 bg-slate-50 border-0 rounded-2xl">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อผู้ป่วย</label>
+                            <input type="text" v-model="form.patientName" required placeholder="ระบุชื่อผู้ป่วย" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 p-2.5 border">
                         </div>
-                        <div class="space-y-1">
-                            <label class="text-[10px] font-bold text-slate-400">เสร็จ</label>
-                            <div id="finishTimeLabel" class="p-3 bg-slate-100 rounded-2xl text-center font-bold text-slate-400">--:--</div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">เวลาเริ่มนวด</label>
+                                <input type="time" v-model="form.startTime" @change="calculateEndTime" required class="w-full border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 p-2.5 border">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">เวลาเสร็จ (คำนวณอัตโนมัติ)</label>
+                                <input type="time" v-model="form.endTime" required readonly class="w-full border-gray-300 rounded-lg shadow-sm bg-gray-50 text-gray-600 p-2.5 border cursor-not-allowed">
+                            </div>
                         </div>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase">การชำระเงิน</label>
-                        <div class="grid grid-cols-2 gap-2 mt-1">
-                            <label class="cursor-pointer"><input type="radio" name="payment" value="โอน" checked class="peer hidden"><div class="p-2 text-center rounded-xl border-2 peer-checked:border-indigo-600 peer-checked:bg-indigo-50 text-xs font-bold transition-all">โอนเงิน</div></label>
-                            <label class="cursor-pointer"><input type="radio" name="payment" value="เงินสด" class="peer hidden"><div class="p-2 text-center rounded-xl border-2 peer-checked:border-orange-600 peer-checked:bg-orange-50 text-xs font-bold transition-all">เงินสด</div></label>
-                        </div>
-                    </div>
-                    <button type="submit" id="submitBtn" class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all active:scale-[0.98]">บันทึกข้อมูล</button>
-                    <button type="button" id="cancelEditBtn" onclick="resetForm()" class="hidden w-full py-4 bg-slate-200 text-slate-600 rounded-2xl font-bold transition-all">ยกเลิกการแก้ไข</button>
-                </form>
-            </div>
-        </div>
 
-        <div class="lg:col-span-8">
-            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="p-6 border-b flex justify-between items-center">
-                    <h2 class="font-bold text-slate-800 flex items-center gap-2"><i data-lucide="calendar"></i> รายการของวันที่ <span id="displayDate" class="text-indigo-600">--/--/--</span></h2>
-                    <div class="flex items-center gap-2 text-[10px]">
-                        <span class="sync-text text-slate-400 font-bold uppercase tracking-wider">Cloud Status</span>
-                        <div class="sync-dot w-2 h-2 rounded-full bg-slate-300"></div>
-                    </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">ประเภทการนวด</label>
+                            <select v-model="form.type" @change="calculateEndTime" required class="w-full border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 p-2.5 border">
+                                <option value="" disabled>เลือกประเภท</option>
+                                <option value="นวดเท้า">นวดเท้า (45 นาที - 150 บ.)</option>
+                                <option value="นวดบ่า">นวดบ่า (30 นาที - 120 บ.)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">ผู้นวด</label>
+                            <div class="flex gap-2">
+                                <select v-model="form.masseuse" required class="flex-1 border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 p-2.5 border">
+                                    <option value="" disabled>เลือกผู้นวด</option>
+                                    <option v-for="m in masseuses" :key="m" :value="m">{{ m }}</option>
+                                </select>
+                                <button type="button" @click="showAddMasseuse = true" class="bg-green-100 text-green-700 p-2 rounded-lg hover:bg-green-200" title="เพิ่มผู้นวด">+ เพิ่ม</button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">วิธีการชำระเงิน</label>
+                            <select v-model="form.paymentMethod" required class="w-full border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 p-2.5 border">
+                                <option value="เงินสด">เงินสด</option>
+                                <option value="โอน">โอน</option>
+                            </select>
+                        </div>
+
+                        <div class="pt-4 flex gap-2">
+                            <button type="submit" :disabled="isLoading" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg transition duration-150 flex justify-center items-center gap-2">
+                                <span v-if="isLoading" class="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
+                                {{ editingId ? 'อัปเดตข้อมูล' : 'บันทึกรายการ' }}
+                            </button>
+                            <button v-if="editingId" type="button" @click="resetForm" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2.5 px-4 rounded-lg transition duration-150">ยกเลิก</button>
+                        </div>
+                    </form>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead class="bg-slate-50 text-slate-400 text-[10px] uppercase font-bold">
-                            <tr>
-                                <th class="px-6 py-4 text-left">ผู้นวด / ผู้ป่วย</th>
-                                <th class="px-6 py-4 text-center">ประเภท / เวลา</th>
-                                <th class="px-6 py-4 text-right">รายได้สุทธิ</th>
-                                <th class="px-6 py-4 no-print"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
-                    </table>
+            </div>
+
+            <div class="lg:col-span-2">
+                <div class="glass-panel p-6 rounded-2xl h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800">รายการนวดล่าสุด</h2>
+                        <div class="flex items-center gap-2">
+                            <label class="text-sm text-gray-600">กรองวันที่:</label>
+                            <input type="date" v-model="filterDate" class="border-gray-300 rounded-lg shadow-sm p-1.5 border text-sm">
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto flex-1 border border-gray-200 rounded-lg">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">เวลา</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ชื่อผู้ป่วย</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ประเภท</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ผู้นวด</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">ราคา</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">ชำระด้วย</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr v-if="filteredRecords.length === 0">
+                                    <td colspan="7" class="px-6 py-10 text-center text-gray-500">ไม่มีข้อมูลในวันที่เลือก</td>
+                                </tr>
+                                <tr v-for="record in sortedFilteredRecords" :key="record.id" class="hover:bg-green-50 transition-colors">
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ record.startTime }} - {{ record.endTime }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{{ record.patientName }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm">
+                                        <span :class="record.type === 'นวดเท้า' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full">
+                                            {{ record.type }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ record.masseuse }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">{{ record.price }} ฿</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-center">
+                                        <span :class="record.paymentMethod === 'เงินสด' ? 'text-green-600' : 'text-blue-600'" class="font-medium">
+                                            {{ record.paymentMethod }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-center text-sm font-medium space-x-2">
+                                        <button @click="editRecord(record)" class="text-amber-600 hover:text-amber-900">แก้ไข</button>
+                                        <button @click="deleteRecord(record.id)" class="text-red-600 hover:text-red-900">ลบ</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div id="view-summary" class="hidden animate-in fade-in duration-500">
-        <div class="bg-indigo-900 text-white rounded-3xl p-6 mb-8 flex flex-col md:flex-row justify-between items-center gap-4 border shadow-xl">
-            <div class="flex items-center gap-4">
-                <div class="sync-dot w-4 h-4 rounded-full bg-emerald-500 pulse-green"></div>
-                <div>
-                    <h3 class="text-lg font-bold">สรุปรายงานประจำวัน >> ยืนยันความถูกต้อง</h3>
-                    <p class="text-indigo-200 text-xs">ข้อมูลได้รับการซิงค์กับ Google Sheet เรียบร้อยแล้ว (อัปเดตล่าสุด: <span id="lastSyncTime">--:--</span>)</p>
+        <div v-show="currentTab === 'summary'" class="glass-panel p-6 sm:p-8 rounded-2xl">
+            <div class="flex flex-col sm:flex-row justify-between items-center mb-6 no-print">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-2xl font-bold text-gray-800">สรุปรายงานประจำวัน</h2>
+                    <input type="date" v-model="filterDate" class="border-gray-300 rounded-lg shadow-sm p-2 border font-medium text-green-700 bg-green-50">
                 </div>
-            </div>
-            <div class="flex gap-2 no-print">
-                <button onclick="window.print()" class="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-xl font-bold flex items-center gap-2 text-sm transition-all">
-                    <i data-lucide="printer" class="w-4 h-4"></i> พิมพ์ PDF / รายงาน
+                <button @click="exportPDF" class="mt-4 sm:mt-0 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium flex items-center gap-2 transition duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    Export PDF / Print
                 </button>
             </div>
+
+            <div id="pdf-content" class="bg-white p-2 sm:p-8 rounded-xl">
+                <!-- PDF Header -->
+                <div class="text-center mb-8 pb-4 border-b-2 border-green-600">
+                    <h2 class="text-2xl font-bold text-gray-800">รายงานสรุปรายการนวดประจำวัน</h2>
+                    <p class="text-lg text-gray-600 mt-2">ประจำวันที่: {{ formatDate(filterDate) }}</p>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    <div class="bg-green-50 p-4 rounded-xl border border-green-100 text-center">
+                        <p class="text-sm text-green-600 font-medium mb-1">ผู้มาใช้บริการรวม</p>
+                        <p class="text-3xl font-bold text-green-800">{{ summary.totalCases }} <span class="text-lg">คน</span></p>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
+                        <p class="text-sm text-blue-600 font-medium mb-1">นวดเท้า (เคส)</p>
+                        <p class="text-3xl font-bold text-blue-800">{{ summary.footCases }}</p>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-xl border border-purple-100 text-center">
+                        <p class="text-sm text-purple-600 font-medium mb-1">นวดบ่า (เคส)</p>
+                        <p class="text-3xl font-bold text-purple-800">{{ summary.shoulderCases }}</p>
+                    </div>
+                    <div class="bg-amber-50 p-4 rounded-xl border border-amber-100 text-center">
+                        <p class="text-sm text-amber-600 font-medium mb-1">รายรับรวมทั้งหมด</p>
+                        <p class="text-3xl font-bold text-amber-800">{{ summary.totalRevenue }} <span class="text-lg">฿</span></p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    <!-- เงินเข้าระบบ -->
+                    <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2 border-b pb-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" /><path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clip-rule="evenodd" /></svg>
+                            สรุปการกระจายรายได้
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center text-lg">
+                                <span class="text-gray-600">เงินเข้าโรงพยาบาล</span>
+                                <span class="font-bold text-gray-900">{{ summary.totalHospital }} ฿</span>
+                            </div>
+                            <div class="flex justify-between items-center text-lg">
+                                <span class="text-gray-600">เงินเข้ากองกลาง</span>
+                                <span class="font-bold text-gray-900">{{ summary.totalCentral }} ฿</span>
+                            </div>
+                            <div class="flex justify-between items-center text-lg pt-2 border-t border-gray-200">
+                                <span class="text-gray-600">ส่วนแบ่งผู้นวด (รวม)</span>
+                                <span class="font-bold text-green-700">{{ summary.totalMasseuse }} ฿</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ประเภทการชำระ -->
+                    <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2 border-b pb-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z" /><path fill-rule="evenodd" d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>
+                            สรุปช่องทางการชำระเงิน
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center text-lg">
+                                <span class="text-gray-600">เงินสด</span>
+                                <span class="font-bold text-green-600">{{ summary.cashTotal }} ฿</span>
+                            </div>
+                            <div class="flex justify-between items-center text-lg">
+                                <span class="text-gray-600">เงินโอน</span>
+                                <span class="font-bold text-blue-600">{{ summary.transferTotal }} ฿</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="text-xl font-bold text-gray-800 mb-4">สรุปรายได้แยกตามผู้นวด</h3>
+                <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-green-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-bold text-gray-700">ชื่อผู้นวด</th>
+                                <th class="px-4 py-3 text-center text-sm font-bold text-gray-700">จำนวนเคสรวม</th>
+                                <th class="px-4 py-3 text-center text-sm font-bold text-gray-700">นวดเท้า (เคส)</th>
+                                <th class="px-4 py-3 text-center text-sm font-bold text-gray-700">นวดบ่า (เคส)</th>
+                                <th class="px-4 py-3 text-right text-sm font-bold text-gray-700">เงินส่วนแบ่งที่ได้ (บาท)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <tr v-if="summary.masseuseBreakdown.length === 0">
+                                <td colspan="5" class="px-6 py-6 text-center text-gray-500">ไม่มีข้อมูล</td>
+                            </tr>
+                            <tr v-for="m in summary.masseuseBreakdown" :key="m.name">
+                                <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{{ m.name }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-700">{{ m.totalCases }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-700">{{ m.footCases }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-700">{{ m.shoulderCases }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-right font-bold text-green-700">{{ m.totalCut }} ฿</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- หมายเหตุอธิบายเงื่อนไข -->
+                <div class="mt-8 text-xs text-gray-500 bg-gray-50 p-3 rounded border border-gray-200">
+                    <p><strong>*เงื่อนไขการแบ่งรายได้:</strong></p>
+                    <p>- นวดเท้า (150 บ.): รพ. 60 บ., ผู้นวด 90 บ. <span class="text-amber-600 font-semibold">(ยกเว้นเคสแรกของวันของผู้นวดแต่ละคน ผู้นวดได้เต็ม 150 บ. รพ. 0 บ.)</span></p>
+                    <p>- นวดบ่า (120 บ.): รพ. 48 บ., ผู้นวด 70 บ., เข้ากองกลาง 2 บ.</p>
+                </div>
+            </div>
         </div>
 
-        <div class="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
-            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">ยอดเงินรวมทั้งหมด</p><p id="sumTotal" class="text-2xl font-black text-indigo-900">0</p></div>
-            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">ผู้มารับบริการ</p><p id="sumPatients" class="text-2xl font-black">0</p></div>
-            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">เงินเข้าโรงพยาบาล</p><p id="sumHospital" class="text-2xl font-black text-emerald-600">0</p></div>
-            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">เข้ากองกลาง</p><p id="sumCentral" class="text-2xl font-black text-purple-600">0</p></div>
-            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">เงินโอน</p><p id="sumTransfer" class="text-2xl font-black text-blue-600">0</p></div>
-            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">เงินสด</p><p id="sumCash" class="text-2xl font-black text-orange-600">0</p></div>
-        </div>
+        <!-- Modal: Add Masseuse -->
+        <transition name="fade">
+            <div v-if="showAddMasseuse" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+                    <div class="bg-green-600 p-4">
+                        <h3 class="text-lg font-bold text-white">เพิ่มรายชื่อผู้นวด</h3>
+                    </div>
+                    <div class="p-6">
+                        <input type="text" v-model="newMasseuseName" placeholder="กรอกชื่อ-นามสกุล" class="w-full border-gray-300 rounded-lg shadow-sm p-3 border mb-4 focus:ring-green-500 focus:border-green-500">
+                        <div class="flex justify-end gap-2">
+                            <button @click="showAddMasseuse = false; newMasseuseName = ''" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">ยกเลิก</button>
+                            <button @click="addMasseuse" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">บันทึก</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </transition>
 
-        <div class="bg-white rounded-3xl border shadow-sm overflow-hidden card">
-            <div class="p-6 border-b bg-slate-50"><h3 class="font-bold flex items-center gap-2"><i data-lucide="users" class="text-indigo-500"></i> สรุปรายบุคคล (ผู้นวด)</h3></div>
-            <table class="w-full text-sm">
-                <thead class="bg-slate-50 font-bold text-slate-500 text-[10px] uppercase">
-                    <tr><th class="px-6 py-4 text-left">ชื่อ</th><th class="px-6 py-4 text-center">เท้า (เคส)</th><th class="px-6 py-4 text-center">บ่า (เคส)</th><th class="px-6 py-4 text-right">เงินที่ได้รับ</th></tr>
-                </thead>
-                <tbody id="summaryTableBody" class="divide-y divide-slate-100"></tbody>
-            </table>
-        </div>
+        <!-- Modal: Settings (Google Sheets) -->
+        <transition name="fade">
+            <div v-if="showSettings" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden">
+                    <div class="bg-gray-800 p-4 flex justify-between items-center">
+                        <h3 class="text-lg font-bold text-white">ตั้งค่าการเชื่อมต่อ Google Sheets</h3>
+                        <button @click="showSettings = false" class="text-gray-400 hover:text-white">&times;</button>
+                    </div>
+                    <div class="p-6">
+                        <div class="bg-blue-50 text-blue-800 p-4 rounded-lg text-sm mb-6 border border-blue-200">
+                            <strong>สถานะปัจจุบัน:</strong> ข้อมูลถูกบันทึกในเครื่อง (Local Storage)<br>
+                            หากต้องการบันทึกขึ้น Google Sheet โดยอัตโนมัติ ให้นำ Web App URL ที่ได้จาก Google Apps Script มาใส่ด้านล่าง
+                        </div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Google Apps Script Web App URL</label>
+                        <input type="url" v-model="sheetUrl" placeholder="https://script.google.com/macros/s/..." class="w-full border-gray-300 rounded-lg shadow-sm p-3 border mb-2 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mb-6">ทิ้งว่างไว้หากต้องการใช้ระบบ Local Storage ตามปกติ</p>
+                        
+                        <div class="flex justify-end gap-2">
+                            <button @click="saveSettings" class="px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">บันทึกการตั้งค่า</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- Notification Toast -->
+        <transition name="fade">
+            <div v-if="toast.show" class="fixed bottom-4 right-4 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50">
+                <svg v-if="toast.type === 'success'" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                <svg v-else class="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                <span>{{ toast.message }}</span>
+            </div>
+        </transition>
+
     </div>
-</main>
 
-<script>
-    function updateTimeAndPrice() {
-        const start = document.getElementById('startTime').value;
-        if (!start) return;
-        let dur = 0;
-        if (document.getElementById('type_foot').checked) dur += CONFIG.FOOT.duration;
-        if (document.getElementById('type_shoulder').checked) dur += CONFIG.SHOULDER.duration;
-        const [h, m] = start.split(':').map(Number);
-        const d = new Date(); d.setHours(h, m + dur);
-        document.getElementById('finishTimeLabel').innerText = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
-    }
+    <script>
+        const { createApp, ref, computed, watch, onMounted } = Vue;
 
-    async function handleSubmit(e) {
-        e.preventDefault();
-        const typeKeys = [];
-        if (document.getElementById('type_foot').checked) typeKeys.push('FOOT');
-        if (document.getElementById('type_shoulder').checked) typeKeys.push('SHOULDER');
-        if (typeKeys.length === 0) { showToast("กรุณาเลือกประเภทการนวด", "error"); return; }
+        createApp({
+            setup() {
+                // State
+                const currentTab = ref('form');
+                const showAddMasseuse = ref(false);
+                const showSettings = ref(false);
+                const isLoading = ref(false);
+                const sheetUrl = ref(localStorage.getItem('sheetUrl') || '');
+                
+                const newMasseuseName = ref('');
+                const masseuses = ref(JSON.parse(localStorage.getItem('masseuses')) || ['หมอเอ', 'หมอบี', 'หมอซี']);
+                const records = ref(JSON.parse(localStorage.getItem('records')) || []);
+                
+                const today = new Date().toISOString().split('T')[0];
+                const filterDate = ref(today);
+                const editingId = ref(null);
 
-        const staffName = document.getElementById('staffName').value;
-        const date = document.getElementById('date').value;
-        // เช็คเท้าเคสแรก เฉพาะคนและเฉพาะวัน
-        const isFootFirst = typeKeys.includes('FOOT') && !records.some(r => r.staffName === staffName && r.date === date && r.typeKeys.includes('FOOT') && r.id !== editingId);
+                const defaultForm = {
+                    date: today,
+                    patientName: '',
+                    startTime: '',
+                    endTime: '',
+                    type: '',
+                    masseuse: '',
+                    paymentMethod: 'เงินสด'
+                };
+                const form = ref({ ...defaultForm });
 
-        let earnings = { price: 0, staff: 0, hospital: 0, central: 0 };
-        typeKeys.forEach(k => {
-            const c = CONFIG[k]; 
-            earnings.price += c.price;
-            if (k === 'FOOT' && isFootFirst) { 
-                earnings.staff += c.price; 
-            } else { 
-                earnings.staff += c.split.staff; earnings.hospital += c.split.hospital; earnings.central += c.split.central; 
+                const toast = ref({ show: false, message: '', type: 'success' });
+
+                const showToast = (message, type = 'success') => {
+                    toast.value = { show: true, message, type };
+                    setTimeout(() => toast.value.show = false, 3000);
+                };
+
+                const saveToLocal = () => {
+                    localStorage.setItem('records', JSON.stringify(records.value));
+                    localStorage.setItem('masseuses', JSON.stringify(masseuses.value));
+                };
+
+                const formatDate = (dateString) => {
+                    if(!dateString) return '';
+                    const options = { year: 'numeric', month: 'long', day: 'numeric' };
+                    return new Date(dateString).toLocaleDateString('th-TH', options);
+                };
+
+                const calculateEndTime = () => {
+                    if (!form.value.startTime || !form.value.type) {
+                        form.value.endTime = '';
+                        return;
+                    }
+                    const [hours, minutes] = form.value.startTime.split(':').map(Number);
+                    const dateObj = new Date();
+                    dateObj.setHours(hours, minutes, 0, 0);
+                    
+                    const addMinutes = form.value.type === 'นวดเท้า' ? 45 : 30;
+                    dateObj.setMinutes(dateObj.getMinutes() + addMinutes);
+                    
+                    const endHours = String(dateObj.getHours()).padStart(2, '0');
+                    const endMins = String(dateObj.getMinutes()).padStart(2, '0');
+                    form.value.endTime = `${endHours}:${endMins}`;
+                };
+
+                // ฟังก์ชันคำนวณส่วนแบ่งของทั้งวันใหม่ เพื่อให้ถูกต้องเสมอ (แม้จะมีการลบหรือแก้ไขข้อมูล)
+                const recalculateSplitsForDate = (date) => {
+                    // ดึงรายการของวันนี้ทั้งหมด
+                    const dayRecords = records.value.filter(r => r.date === date);
+                    
+                    // จัดกลุ่มตามผู้นวด
+                    const byMasseuse = {};
+                    dayRecords.forEach(r => {
+                        if (!byMasseuse[r.masseuse]) byMasseuse[r.masseuse] = [];
+                        byMasseuse[r.masseuse].push(r);
+                    });
+
+                    // วนลูปคำนวณใหม่
+                    for (const m in byMasseuse) {
+                        // เรียงตามเวลาเริ่มนวด (สำคัญมากในการหาเคสแรก)
+                        byMasseuse[m].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                        
+                        let foundFirstFoot = false;
+                        
+                        byMasseuse[m].forEach(record => {
+                            if (record.type === 'นวดบ่า') {
+                                record.price = 120;
+                                record.masseuseCut = 70;
+                                record.hospitalCut = 48;
+                                record.centralCut = 2;
+                            } else if (record.type === 'นวดเท้า') {
+                                record.price = 150;
+                                record.centralCut = 0;
+                                
+                                if (!foundFirstFoot) {
+                                    // เคสแรกของวัน
+                                    record.masseuseCut = 150;
+                                    record.hospitalCut = 0;
+                                    foundFirstFoot = true;
+                                } else {
+                                    // เคสที่ 2 เป็นต้นไป
+                                    record.masseuseCut = 90;
+                                    record.hospitalCut = 60;
+                                }
+                            }
+                        });
+                    }
+                };
+
+                const saveRecord = async () => {
+                    isLoading.value = true;
+                    
+                    const recordData = {
+                        ...form.value,
+                        id: editingId.value || Date.now().toString(),
+                        timestamp: new Date().toISOString()
+                    };
+
+                    // Update Local State
+                    if (editingId.value) {
+                        const index = records.value.findIndex(r => r.id === editingId.value);
+                        if(index !== -1) records.value[index] = recordData;
+                    } else {
+                        records.value.push(recordData);
+                    }
+
+                    // Recalculate splits for this date to ensure rules are met
+                    recalculateSplitsForDate(form.value.date);
+                    saveToLocal();
+
+                    // Optional: Sync to Google Sheets
+                    if (sheetUrl.value) {
+                        try {
+                            const formData = new FormData();
+                            formData.append('action', editingId.value ? 'UPDATE' : 'CREATE');
+                            formData.append('data', JSON.stringify(recordData));
+                            
+                            // ส่งข้อมูลแบบ no-cors หรือฟอร์มเพื่อไม่ให้ติด CORS (ขึ้นอยู่กับการเขียน GAS)
+                            await fetch(sheetUrl.value, {
+                                method: 'POST',
+                                body: formData,
+                            });
+                        } catch (e) {
+                            console.error('Sheet Sync Error', e);
+                            // ไม่แจ้งเตือน error ให้รบกวนผู้ใช้ เนื่องจากข้อมูลลง Local แล้ว
+                        }
+                    }
+
+                    showToast(editingId.value ? 'อัปเดตข้อมูลสำเร็จ' : 'บันทึกข้อมูลสำเร็จ');
+                    resetForm();
+                    isLoading.value = false;
+                };
+
+                const editRecord = (record) => {
+                    form.value = { ...record };
+                    editingId.value = record.id;
+                    currentTab.value = 'form';
+                    window.scrollTo(0,0);
+                };
+
+                const deleteRecord = (id) => {
+                    if(confirm('คุณแน่ใจหรือไม่ที่จะลบรายการนี้?')) {
+                        const record = records.value.find(r => r.id === id);
+                        const recordDate = record.date;
+                        
+                        records.value = records.value.filter(r => r.id !== id);
+                        
+                        // Recalculate in case the deleted item was a "First Foot Massage"
+                        recalculateSplitsForDate(recordDate);
+                        saveToLocal();
+                        showToast('ลบรายการสำเร็จ');
+                        
+                        // Optional Sync Delete
+                        if (sheetUrl.value) {
+                            const formData = new FormData();
+                            formData.append('action', 'DELETE');
+                            formData.append('id', id);
+                            fetch(sheetUrl.value, { method: 'POST', body: formData }).catch(e=>console.log(e));
+                        }
+                    }
+                };
+
+                const resetForm = () => {
+                    form.value = { ...defaultForm, date: filterDate.value }; // ให้จำวันที่กำลังเลือกอยู่
+                    editingId.value = null;
+                };
+
+                const addMasseuse = () => {
+                    if(newMasseuseName.value.trim() && !masseuses.value.includes(newMasseuseName.value.trim())) {
+                        masseuses.value.push(newMasseuseName.value.trim());
+                        form.value.masseuse = newMasseuseName.value.trim();
+                        saveToLocal();
+                        showToast('เพิ่มรายชื่อสำเร็จ');
+                    }
+                    showAddMasseuse.value = false;
+                    newMasseuseName.value = '';
+                };
+
+                const saveSettings = () => {
+                    localStorage.setItem('sheetUrl', sheetUrl.value);
+                    showSettings.value = false;
+                    showToast('บันทึกการตั้งค่าแล้ว');
+                };
+
+                const filteredRecords = computed(() => {
+                    return records.value.filter(r => r.date === filterDate.value);
+                });
+
+                const sortedFilteredRecords = computed(() => {
+                    // เรียงตามเวลาล่าสุดขึ้นก่อน ในหน้าแสดงผลตาราง
+                    return [...filteredRecords.value].sort((a, b) => b.startTime.localeCompare(a.startTime));
+                });
+
+                const summary = computed(() => {
+                    const daily = filteredRecords.value;
+                    let result = {
+                        totalCases: daily.length,
+                        footCases: 0,
+                        shoulderCases: 0,
+                        totalRevenue: 0,
+                        totalHospital: 0,
+                        totalCentral: 0,
+                        totalMasseuse: 0,
+                        cashTotal: 0,
+                        transferTotal: 0,
+                        masseuseBreakdown: []
+                    };
+
+                    const mStats = {};
+
+                    daily.forEach(r => {
+                        if (r.type === 'นวดเท้า') result.footCases++;
+                        if (r.type === 'นวดบ่า') result.shoulderCases++;
+                        
+                        result.totalRevenue += r.price;
+                        result.totalHospital += r.hospitalCut;
+                        result.totalCentral += r.centralCut;
+                        result.totalMasseuse += r.masseuseCut;
+
+                        if (r.paymentMethod === 'เงินสด') result.cashTotal += r.price;
+                        if (r.paymentMethod === 'โอน') result.transferTotal += r.price;
+
+                        // breakdown per masseuse
+                        if (!mStats[r.masseuse]) {
+                            mStats[r.masseuse] = { name: r.masseuse, totalCases: 0, footCases: 0, shoulderCases: 0, totalCut: 0 };
+                        }
+                        mStats[r.masseuse].totalCases++;
+                        if (r.type === 'นวดเท้า') mStats[r.masseuse].footCases++;
+                        if (r.type === 'นวดบ่า') mStats[r.masseuse].shoulderCases++;
+                        mStats[r.masseuse].totalCut += r.masseuseCut;
+                    });
+
+                    result.masseuseBreakdown = Object.values(mStats).sort((a,b) => b.totalCases - a.totalCases);
+                    return result;
+                });
+
+                const exportPDF = () => {
+                    const element = document.getElementById('pdf-content');
+                    const opt = {
+                        margin:       0.5,
+                        filename:     `รายงานนวด_${filterDate.value}.pdf`,
+                        image:        { type: 'jpeg', quality: 0.98 },
+                        html2canvas:  { scale: 2 },
+                        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+                    };
+                    html2pdf().set(opt).from(element).save();
+                };
+
+                // Watch Date change to auto-update form date
+                watch(filterDate, (newVal) => {
+                    if(!editingId.value) form.value.date = newVal;
+                });
+
+                return {
+                    currentTab, showAddMasseuse, showSettings, isLoading, sheetUrl,
+                    newMasseuseName, masseuses, form, filterDate, editingId, toast,
+                    calculateEndTime, saveRecord, editRecord, deleteRecord, resetForm, addMasseuse, saveSettings,
+                    filteredRecords, sortedFilteredRecords, summary, exportPDF, formatDate
+                };
             }
-        });
-
-        const record = {
-            id: editingId || Date.now().toString(),
-            date, staffName, patientName: document.getElementById('patientName').value,
-            typeKeys, typeLabel: typeKeys.map(k => CONFIG[k].label).join(' + '),
-            startTime: document.getElementById('startTime').value,
-            finishTime: document.getElementById('finishTimeLabel').innerText,
-            payment: document.querySelector('input[name="payment"]:checked').value,
-            earnings, isFootFirst
-        };
-
-        const success = await callCloud(editingId ? "update" : "create", record);
-        if (success) {
-            if (editingId) records = records.map(r => r.id === editingId ? record : r);
-            else records.unshift(record);
-            showToast(editingId ? "แก้ไขข้อมูลสำเร็จ" : "บันทึกข้อมูลสำเร็จ", "success");
-            resetForm(); renderRecords(); updateSummary();
-        } else {
-            showToast("ไม่สามารถบันทึกข้อมูลได้", "error");
-        }
-    }
-
-    function renderRecords() {
-        const dateVal = document.getElementById('date').value;
-        document.getElementById('displayDate').innerText = dateVal;
-        const filtered = records.filter(r => r.date === dateVal);
-        document.getElementById('tableBody').innerHTML = filtered.length ? filtered.map(r => `
-            <tr class="hover:bg-slate-50 group">
-                <td class="px-6 py-4"><b>${r.staffName}</b><br><span class="text-xs text-slate-400">ผู้ป่วย: ${r.patientName}</span></td>
-                <td class="px-6 py-4 text-center text-xs">
-                    <div class="flex gap-1 justify-center mb-1">
-                        ${r.typeKeys.map(k => `<span class="px-2 py-0.5 rounded-full ${k === 'FOOT' ? 'bg-indigo-50 text-indigo-600' : 'bg-purple-50 text-purple-600'} font-bold">${CONFIG[k].label}</span>`).join('')}
-                    </div>
-                    <span class="text-slate-400 font-mono">${r.startTime} - ${r.finishTime}</span>
-                </td>
-                <td class="px-6 py-4 text-right">
-                    <span class="font-bold text-slate-800">${r.earnings.staff.toLocaleString()} ฿</span>
-                    ${r.isFootFirst ? '<br><span class="text-[9px] font-black text-emerald-500 uppercase">เท้าเคสแรก</span>' : ''}
-                </td>
-                <td class="px-6 py-4 text-right no-print">
-                    <div class="flex justify-end gap-1 opacity-0 group-hover:opacity-100">
-                        <button onclick="editRecord('${r.id}')" class="p-2 text-indigo-500 hover:bg-indigo-50 rounded-xl"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
-                        <button onclick="deleteRecord('${r.id}')" class="p-2 text-red-400 hover:bg-red-50 rounded-xl"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                    </div>
-                </td>
-            </tr>
-        `).join('') : `<tr><td colspan="4" class="p-20 text-center text-slate-400">ไม่มีข้อมูลสำหรับวันนี้</td></tr>`;
-        lucide.createIcons();
-    }
-
-    function updateSummary() {
-        const dateVal = document.getElementById('date').value;
-        const filtered = records.filter(r => r.date === dateVal);
-        let stats = { total: 0, patients: filtered.length, hospital: 0, central: 0, transfer: 0, cash: 0 };
-        let staffSummary = {};
-
-        filtered.forEach(r => {
-            stats.total += r.earnings.price; stats.hospital += r.earnings.hospital; stats.central += r.earnings.central;
-            if (r.payment === 'โอน') stats.transfer += r.earnings.price; else stats.cash += r.earnings.price;
-            if (!staffSummary[r.staffName]) staffSummary[r.staffName] = { foot: 0, shoulder: 0, income: 0 };
-            r.typeKeys.forEach(k => { if(k === 'FOOT') staffSummary[r.staffName].foot++; else staffSummary[r.staffName].shoulder++; });
-            staffSummary[r.staffName].income += r.earnings.staff;
-        });
-
-        document.getElementById('sumTotal').innerText = stats.total.toLocaleString();
-        document.getElementById('sumPatients').innerText = stats.patients;
-        document.getElementById('sumHospital').innerText = stats.hospital.toLocaleString();
-        document.getElementById('sumCentral').innerText = stats.central.toLocaleString();
-        document.getElementById('sumTransfer').innerText = stats.transfer.toLocaleString();
-        document.getElementById('sumCash').innerText = stats.cash.toLocaleString();
-
-        document.getElementById('summaryTableBody').innerHTML = Object.entries(staffSummary).map(([name, s]) => `
-            <tr><td class="px-6 py-4 font-bold text-slate-700">${name}</td><td class="px-6 py-4 text-center">${s.foot}</td><td class="px-6 py-4 text-center">${s.shoulder}</td><td class="px-6 py-4 text-right font-black text-indigo-600">${s.income.toLocaleString()} ฿</td></tr>
-        `).join('');
-    }
-
-    function editRecord(id) {
-        const r = records.find(x => x.id === id); if (!r) return;
-        editingId = id;
-        document.getElementById('date').value = r.date;
-        document.getElementById('staffName').value = r.staffName;
-        document.getElementById('patientName').value = r.patientName;
-        document.getElementById('type_foot').checked = r.typeKeys.includes('FOOT');
-        document.getElementById('type_shoulder').checked = r.typeKeys.includes('SHOULDER');
-        document.getElementById('startTime').value = r.startTime;
-        document.querySelector(`input[name="payment"][value="${r.payment}"]`).checked = true;
-        document.getElementById('submitBtn').innerText = "บันทึกการแก้ไข";
-        document.getElementById('submitBtn').className = "w-full py-4 bg-orange-500 text-white rounded-2xl font-bold shadow-lg";
-        document.getElementById('cancelEditBtn').classList.remove('hidden');
-        updateTimeAndPrice(); window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    async function deleteRecord(id) {
-        if(!confirm("ยืนยันการลบข้อมูลนี้ออกจาก Google Sheet?")) return;
-        const success = await callCloud("delete", { id });
-        if (success) {
-            records = records.filter(x => x.id !== id); renderRecords(); updateSummary();
-            showToast("ลบข้อมูลสำเร็จ", "info");
-        }
-    }
-
-    function showView(v) {
-        document.getElementById('view-form').classList.toggle('hidden', v !== 'form');
-        document.getElementById('view-summary').classList.toggle('hidden', v !== 'summary');
-    }
-
-    function addStaff() {
-        const n = prompt("พิมพ์ชื่อผู้นวดใหม่:");
-        if (n && !staffList.includes(n)) { staffList.push(n); localStorage.setItem('massage_staff_list', JSON.stringify(staffList)); renderStaffSelect(); }
-    }
-
-    function renderStaffSelect() {
-        document.getElementById('staffName').innerHTML = staffList.map(n => `<option value="${n}">${n}</option>`).join('');
-    }
-
-    function resetForm() {
-        editingId = null; document.getElementById('mainForm').reset();
-        document.getElementById('date').valueAsDate = new Date();
-        document.getElementById('startTime').value = new Date().toLocaleTimeString('th-TH', {hour12:false, hour:'2-digit', minute:'2-digit'});
-        document.getElementById('submitBtn').innerText = "บันทึกข้อมูล";
-        document.getElementById('submitBtn').className = "w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg";
-        document.getElementById('cancelEditBtn').classList.add('hidden');
-        updateTimeAndPrice();
-    }
-
-    window.onload = () => {
-        resetForm(); renderStaffSelect(); fetchDataFromCloud(); 
-        document.getElementById('lastSyncTime').innerText = new Date().toLocaleTimeString('th-TH');
-    };
-</script>
+        }).mount('#app');
+    </script>
 </body>
 </html>
