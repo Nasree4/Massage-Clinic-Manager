@@ -441,87 +441,62 @@
                     form.value.endTime = `${endHours}:${endMins}`;
                 };
 
-                // ฟังก์ชันใหม่: สแกนข้อมูลทั้งหมด จัดกลุ่มตามวันและผู้นวด เพื่อเช็ค 'เคสแรก' อย่างแม่นยำ
-                const recalculateAllSplits = () => {
-                    // จัดกลุ่มตามวันที่ทั้งหมดในระบบ
-                    const recordsByDate = {};
-                    (records.value || []).forEach(r => {
-                        if (!recordsByDate[r.date]) recordsByDate[r.date] = [];
-                        recordsByDate[r.date].push(r);
+                // ฟังก์ชันใหม่: สแกนและคำนวณเฉพาะวันที่ทำการแก้ไข/บันทึกเท่านั้น 
+                // เพื่อรักษายอดตัวเลขเก่าในอดีตให้ตรงกับ Sheet ไม่ให้ถูกเขียนทับ
+                const recalculateSplitsForDate = (targetDate) => {
+                    const dayRecords = records.value.filter(r => r.date === targetDate);
+                    
+                    const byMasseuse = {};
+                    dayRecords.forEach(r => {
+                        const m = r.masseuse || 'ไม่ระบุ';
+                        if (!byMasseuse[m]) byMasseuse[m] = [];
+                        byMasseuse[m].push(r);
                     });
 
-                    // วนลูปคำนวณใหม่ทีละวัน
-                    for (const date in recordsByDate) {
-                        const dayRecords = recordsByDate[date];
+                    for (const m in byMasseuse) {
+                        byMasseuse[m].sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')));
                         
-                        // จัดกลุ่มตามผู้นวดในวันนั้นๆ
-                        const byMasseuse = {};
-                        dayRecords.forEach(r => {
-                            const m = r.masseuse || 'ไม่ระบุ';
-                            if (!byMasseuse[m]) byMasseuse[m] = [];
-                            byMasseuse[m].push(r);
-                        });
+                        let foundFirstFoot = false;
+                        let foundFirstShoulder = false;
+                        
+                        const hasFootMassageToday = byMasseuse[m].some(r => (r.type || '').includes('นวดเท้า'));
+                        
+                        byMasseuse[m].forEach(record => {
+                            record.price = 0;
+                            record.masseuseCut = 0;
+                            record.hospitalCut = 0;
+                            record.centralCut = 0;
 
-                        // วนลูปคำนวณยอดเงินของผู้นวดแต่ละคนในวันนั้นๆ
-                        for (const m in byMasseuse) {
-                            // 1. เรียงลำดับตามเวลาเริ่มนวด (Chronological order) เพื่อหาเคสแรกได้ถูกต้อง
-                            byMasseuse[m].sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')));
-                            
-                            // 2. ตัวแปรเก็บสถานะ
-                            let foundFirstFoot = false;
-                            let foundFirstShoulder = false; // สำหรับดักเคสนวดบ่าเคสแรก
-                            
-                            // 3. ตรวจสอบล่วงหน้าว่า "วันนี้หมอคนนี้มีเคสนวดเท้าหรือไม่"
-                            const hasFootMassageToday = byMasseuse[m].some(r => (r.type || '').includes('นวดเท้า'));
-                            
-                            byMasseuse[m].forEach(record => {
-                                // รีเซ็ตยอดเงินเดิมก่อนคำนวณใหม่
-                                record.price = 0;
-                                record.masseuseCut = 0;
-                                record.hospitalCut = 0;
-                                record.centralCut = 0;
+                            const typeStr = record.type || '';
 
-                                const typeStr = record.type || '';
-
-                                // -- คำนวณส่วน นวดบ่า (120 บาท) --
-                                if (typeStr.includes('นวดบ่า')) {
-                                    record.price += 120;
-                                    
-                                    // ตรวจสอบเงื่อนไขพิเศษ: ไม่มีนวดเท้าทั้งวัน และเป็นนวดบ่าเคสแรก
-                                    if (!hasFootMassageToday && !foundFirstShoulder) {
-                                        record.masseuseCut += 120;
-                                        record.hospitalCut += 0;
-                                        record.centralCut += 0;
-                                        foundFirstShoulder = true; // ป้องกันเคสที่สองได้สิทธิ์ซ้ำ
-                                    } else {
-                                        // แบ่งตามปกติ
-                                        record.masseuseCut += 70;
-                                        record.hospitalCut += 48;
-                                        record.centralCut += 2;
-                                    }
-                                } 
-                                
-                                // -- คำนวณส่วน นวดเท้า (150 บาท) --
-                                if (typeStr.includes('นวดเท้า')) {
-                                    record.price += 150;
-                                    record.centralCut += 0; // นวดเท้าไม่มีกองกลาง
-                                    
-                                    // ตรวจสอบอย่างรัดกุมว่าเป็น "นวดเท้าเคสแรกของวัน" หรือไม่
-                                    if (!foundFirstFoot) {
-                                        // เป็นเคสแรก: หมอได้เต็ม 150, รพ. ไม่ได้
-                                        record.masseuseCut += 150;
-                                        record.hospitalCut += 0;
-                                        
-                                        // ตั้งสถานะเป็น true เพื่อให้เคสต่อไปตกไปอยู่ในเงื่อนไขด้านล่าง
-                                        foundFirstFoot = true; 
-                                    } else {
-                                        // เป็นเคสที่ 2 เป็นต้นไปในวันเดียวกัน: แบ่งตามปกติ
-                                        record.masseuseCut += 90;
-                                        record.hospitalCut += 60;
-                                    }
+                            if (typeStr.includes('นวดบ่า')) {
+                                record.price += 120;
+                                if (!hasFootMassageToday && !foundFirstShoulder) {
+                                    record.masseuseCut += 120;
+                                    record.hospitalCut += 0;
+                                    record.centralCut += 0;
+                                    foundFirstShoulder = true; 
+                                } else {
+                                    record.masseuseCut += 70;
+                                    record.hospitalCut += 48;
+                                    record.centralCut += 2;
                                 }
-                            });
-                        }
+                            } 
+                            
+                            if (typeStr.includes('นวดเท้า')) {
+                                record.price += 150;
+                                record.centralCut += 0; 
+                                
+                                if (!foundFirstFoot) {
+                                    record.masseuseCut += 150;
+                                    record.hospitalCut += 0;
+                                    foundFirstFoot = true; 
+                                } else {
+                                    record.masseuseCut += 90;
+                                    record.hospitalCut += 60;
+                                }
+                            }
+                        });
                     }
                 };
 
@@ -575,7 +550,15 @@
                         
                         if(Array.isArray(data)) {
                             records.value = data.map(r => {
-                                return { ...r, date: normalizeDate(r.date) };
+                                // ดึงตัวเลขจริงจาก Google Sheet ตรงๆ โดยไม่มีการเขียนทับ
+                                return { 
+                                    ...r, 
+                                    date: normalizeDate(r.date),
+                                    price: Number(r.price) || 0,
+                                    masseuseCut: Number(r.masseuseCut) || 0,
+                                    hospitalCut: Number(r.hospitalCut) || 0,
+                                    centralCut: Number(r.centralCut) || 0
+                                };
                             });
                             
                             const remoteMasseuses = [...new Set(data.map(r => r.masseuse).filter(Boolean))];
@@ -583,8 +566,7 @@
                                 if(!masseuses.value.includes(m)) masseuses.value.push(m);
                             });
                             
-                            // สั่งให้คำนวณส่วนแบ่งใหม่ทั้งหมดทันทีที่โหลดข้อมูลเสร็จ
-                            recalculateAllSplits();
+                            // ถอดระบบคำนวณอัตโนมัติออก เพื่อเคารพข้อมูลของ Google Sheet
                             saveToLocal();
                             
                             showToast('โหลดข้อมูลจาก Google Sheet สำเร็จ');
@@ -607,7 +589,6 @@
 
                     isLoading.value = true;
                     
-                    // 1. ถ่ายภาพข้อมูลเดิมทั้งหมดเก็บไว้ก่อน เพื่อเปรียบเทียบว่าเคสอื่นโดนกระทบไหม
                     const oldRecordsMap = new Map();
                     records.value.forEach(r => oldRecordsMap.set(r.id, JSON.stringify(r)));
                     
@@ -625,13 +606,12 @@
                         records.value.push(recordData);
                     }
 
-                    // สั่งสแกนและคำนวณใหม่ "ทั้งหมด" เผื่อกรณีมีการแก้ไขวันที่หรือชื่อหมอ
-                    recalculateAllSplits();
+                    // สั่งคำนวณใหม่เฉพาะวันที่มีการบันทึกหรือแก้ไขเท่านั้น
+                    recalculateSplitsForDate(recordData.date);
                     saveToLocal();
 
                     if (sheetUrl.value) {
                         try {
-                            // 2. ส่งข้อมูลเคสที่ผู้ใช้กำลัง บันทึก/แก้ไข ไปยัง Sheet ตามปกติ
                             const formData = new FormData();
                             formData.append('action', editingId.value ? 'UPDATE' : 'CREATE');
                             formData.append('data', JSON.stringify(recordData));
@@ -642,13 +622,11 @@
                                 body: formData,
                             });
                             
-                            // 3. ตรวจสอบว่ามี "เคสเก่า" ที่ถูกระบบคำนวณยอดส่วนแบ่งใหม่หรือไม่ (เช่น โดนเลื่อนเป็นเคสที่สอง)
                             records.value.forEach(r => {
-                                if (r.id === recordData.id) return; // ข้ามเคสที่เพิ่งส่งไปเมื่อกี้
+                                if (r.id === recordData.id) return; 
                                 const oldString = oldRecordsMap.get(r.id);
                                 const newString = JSON.stringify(r);
                                 
-                                // ถ้าตัวเลขยอดเงินถูกคำนวณเปลี่ยนไป ให้ส่ง UPDATE ไปแก้ใน Sheet อัตโนมัติ
                                 if (oldString && oldString !== newString) {
                                     const updateFormData = new FormData();
                                     updateFormData.append('action', 'UPDATE');
@@ -676,25 +654,26 @@
 
                 const deleteRecord = (id) => {
                     if(confirm('คุณแน่ใจหรือไม่ที่จะลบรายการนี้?')) {
-                        // 1. ถ่ายภาพข้อมูลก่อนลบ
                         const oldRecordsMap = new Map();
                         records.value.forEach(r => oldRecordsMap.set(r.id, JSON.stringify(r)));
 
+                        const recordToDelete = records.value.find(r => r.id === id);
+                        const deletedDate = recordToDelete ? recordToDelete.date : null;
+
                         records.value = records.value.filter(r => r.id !== id);
                         
-                        // คำนวณใหม่หลังจากลบ (เพราะถ้าลบเคสแรกไป เคสที่ 2 จะต้องถูกเลื่อนขึ้นมาเป็นเคสแรกแทน)
-                        recalculateAllSplits();
+                        // คำนวณใหม่เฉพาะวันที่มีการลบเคส
+                        if (deletedDate) recalculateSplitsForDate(deletedDate);
+                        
                         saveToLocal();
                         showToast('ลบรายการสำเร็จ');
                         
                         if (sheetUrl.value) {
-                            // 2. ส่งคำสั่งลบไปที่ Sheet
                             const formData = new FormData();
                             formData.append('action', 'DELETE');
                             formData.append('id', id);
                             fetch(sheetUrl.value, { method: 'POST', mode: 'no-cors', body: formData }).catch(e=>console.log(e));
 
-                            // 3. ตรวจสอบว่ามีเคสอื่นที่ต้องสลับขึ้นมาเป็น "เคสแรก" แทนหรือไม่
                             records.value.forEach(r => {
                                 const oldString = oldRecordsMap.get(r.id);
                                 const newString = JSON.stringify(r);
@@ -761,14 +740,14 @@
                         if (typeStr.includes('นวดเท้า')) result.footCases++;
                         if (typeStr.includes('นวดบ่า')) result.shoulderCases++;
                         
-                        // ใช้ยอดเงินที่ถูกคำนวณไว้อย่างแม่นยำจาก recalculateAllSplits()
-                        result.totalRevenue += r.price || 0;
-                        result.totalHospital += r.hospitalCut || 0;
-                        result.totalCentral += r.centralCut || 0;
-                        result.totalMasseuse += r.masseuseCut || 0;
+                        // อ้างอิงตัวเลขมาจาก Sheet อย่างเดียวโดยไม่โดนแก้ไขจากระบบ
+                        result.totalRevenue += Number(r.price) || 0;
+                        result.totalHospital += Number(r.hospitalCut) || 0;
+                        result.totalCentral += Number(r.centralCut) || 0;
+                        result.totalMasseuse += Number(r.masseuseCut) || 0;
 
-                        if (r.paymentMethod === 'เงินสด') result.cashTotal += r.price || 0;
-                        if (r.paymentMethod === 'โอน') result.transferTotal += r.price || 0;
+                        if (r.paymentMethod === 'เงินสด') result.cashTotal += Number(r.price) || 0;
+                        if (r.paymentMethod === 'โอน') result.transferTotal += Number(r.price) || 0;
 
                         if (!mStats[r.masseuse]) {
                             mStats[r.masseuse] = { name: r.masseuse, totalCases: 0, footCases: 0, shoulderCases: 0, totalCut: 0 };
@@ -776,7 +755,7 @@
                         mStats[r.masseuse].totalCases++;
                         if (typeStr.includes('นวดเท้า')) mStats[r.masseuse].footCases++;
                         if (typeStr.includes('นวดบ่า')) mStats[r.masseuse].shoulderCases++;
-                        mStats[r.masseuse].totalCut += r.masseuseCut || 0;
+                        mStats[r.masseuse].totalCut += Number(r.masseuseCut) || 0;
                     });
 
                     result.masseuseBreakdown = Object.values(mStats).sort((a,b) => b.totalCases - a.totalCases);
@@ -800,8 +779,6 @@
                 });
 
                 onMounted(() => {
-                    // ถ้าในเครื่องมีข้อมูลอยู่แล้ว ให้คำนวณเผื่อไว้ก่อนเลยก่อนดึงจาก Sheet
-                    recalculateAllSplits();
                     loadDataFromSheet();
                 });
 
