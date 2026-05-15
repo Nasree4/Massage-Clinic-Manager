@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Massage Dashboard | Cloud Sync Fix</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Kanit', sans-serif; }
+        @media print {
+            .no-print { display: none !important; }
+            .card { border: 1px solid #eee !important; box-shadow: none !important; margin-bottom: 1rem; }
+            body { background-color: white !important; padding: 0 !important; }
+        }
+        .toast-enter { transform: translateY(100px); opacity: 0; }
+        .toast-active { transform: translateY(0); opacity: 1; transition: all 0.3s ease; }
+        .pulse-green { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulse-green 2s infinite; }
+        .pulse-red { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); animation: pulse-red 2s infinite; }
+        @keyframes pulse-green { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        @keyframes pulse-red { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900 pb-10">
+
+<script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxZcljBpq3ayN0DgE6crMJaWjFcdN-9iW-NWInFK9udMO419TCDnBm0kkGafHiDGZSi/exec";
+    
+    const CONFIG = {
+        FOOT: { label: 'นวดเท้า', duration: 45, price: 150, split: { staff: 90, hospital: 60, central: 0 } },
+        SHOULDER: { label: 'นวดบ่า', duration: 30, price: 120, split: { staff: 70, hospital: 48, central: 2 } }
+    };
+
+    let records = [];
+    let staffList = JSON.parse(localStorage.getItem('massage_staff_list') || '["สมชาย", "สมหญิง", "วิชัย"]');
+    let editingId = null;
+    let syncStatus = 'waiting'; 
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = `${type === 'success' ? 'bg-emerald-600' : type === 'error' ? 'bg-red-600' : 'bg-indigo-600'} p-4 rounded-2xl shadow-xl flex items-center gap-3 min-w-[280px] toast-enter text-white transition-all duration-300 z-[100]`;
+        toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : 'info'}" class="w-5 h-5"></i><span class="font-medium">${message}</span>`;
+        container.appendChild(toast);
+        lucide.createIcons();
+        setTimeout(() => toast.classList.add('toast-active'), 10);
+        setTimeout(() => { toast.classList.remove('toast-active'); setTimeout(() => toast.remove(), 300); }, 3000);
+    }
+
+    /* แก้ไขฟังก์ชันดึงข้อมูล: นำ no-cors ออกเพื่อให้สามารถอ่าน JSON ได้ */
+    async function fetchDataFromCloud() {
+        updateSyncUI('syncing');
+        try {
+            // ดึงข้อมูลแบบปกติ (GET) เพื่อให้เบราว์เซอร์อนุญาตให้เข้าถึง Body ของข้อมูล
+            const response = await fetch(SCRIPT_URL);
+            const cloudData = await response.json();
+            
+            if (Array.isArray(cloudData)) {
+                records = cloudData;
+                renderRecords();
+                updateSummary();
+                updateSyncUI('success');
+                showToast('ดึงข้อมูลล่าสุดจาก Google Sheets สำเร็จ', 'success');
+            }
+        } catch (err) {
+            console.error("Fetch error:", err);
+            updateSyncUI('error');
+            showToast('ไม่สามารถดึงข้อมูลจาก Cloud ได้ (ตรวจสอบเน็ตหรือการ Deploy)', 'error');
+        }
+    }
+
+    async function callCloud(action, data) {
+        updateSyncUI('syncing');
+        try {
+            // สำหรับ POST ข้อมูลไปบันทึก ใช้ no-cors ได้เพราะเราไม่ต้องการอ่าน Body ที่ตอบกลับมา
+            await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: JSON.stringify({ action, data })
+            });
+            updateSyncUI('success');
+            return true;
+        } catch (err) {
+            updateSyncUI('error');
+            return false;
+        }
+    }
+
+    function updateSyncUI(status) {
+        syncStatus = status;
+        const dots = document.querySelectorAll('.sync-dot');
+        const texts = document.querySelectorAll('.sync-text');
+        const configs = {
+            waiting: { color: 'bg-slate-300', text: 'รอซิงค์...' },
+            syncing: { color: 'bg-blue-500 animate-pulse', text: 'กำลังโหลด...' },
+            success: { color: 'bg-emerald-500 pulse-green', text: 'เชื่อมต่อแล้ว' },
+            error: { color: 'bg-red-500 pulse-red', text: 'ขัดข้อง' }
+        };
+        dots.forEach(d => d.className = `w-3 h-3 rounded-full ${configs[status].color} sync-dot`);
+        texts.forEach(t => t.innerText = configs[status].text);
+    }
+</script>
+
+<div id="toastContainer" class="fixed bottom-6 right-6 flex flex-col gap-2 z-[9999] no-print"></div>
+
+<nav class="bg-indigo-900 text-white p-4 sticky top-0 z-50 no-print shadow-lg">
+    <div class="max-w-6xl mx-auto flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center">
+                <i data-lucide="activity" class="text-white"></i>
+            </div>
+            <h1 class="font-bold text-lg hidden sm:block">Massage Cloud v2.0</h1>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="showView('form')" class="px-4 py-2 hover:bg-white/20 rounded-xl text-sm font-medium flex items-center gap-2 transition-all">
+                <i data-lucide="plus-circle" class="w-4 h-4"></i> บันทึก
+            </button>
+            <button onclick="showView('summary')" class="px-4 py-2 hover:bg-white/20 rounded-xl text-sm font-medium flex items-center gap-2 transition-all">
+                <i data-lucide="bar-chart-3" class="w-4 h-4"></i> สรุปรายวัน
+            </button>
+            <button onclick="fetchDataFromCloud()" class="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<main class="max-w-6xl mx-auto p-4 md:p-8">
+    
+    <div id="view-form" class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <!-- Sidebar Form -->
+        <div class="lg:col-span-4">
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 no-print">
+                <h2 id="formTitle" class="text-xl font-bold mb-6 flex items-center gap-2 text-slate-800">
+                    <i data-lucide="file-edit" class="text-indigo-600"></i> บันทึกรายการ
+                </h2>
+                <form id="mainForm" onsubmit="handleSubmit(event)" class="space-y-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">วันที่บันทึก</label>
+                        <input type="date" id="date" required onchange="renderRecords(); updateSummary();" class="w-full p-3 bg-slate-50 border-0 rounded-2xl focus:ring-2 focus:ring-indigo-500 font-medium">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">ผู้นวด</label>
+                        <div class="flex gap-2">
+                            <select id="staffName" required class="flex-1 p-3 bg-slate-50 border-0 rounded-2xl focus:ring-2 focus:ring-indigo-500 font-medium"></select>
+                            <button type="button" onclick="addStaff()" class="p-3 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-100 transition-colors"><i data-lucide="user-plus" class="w-5 h-5"></i></button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">ชื่อผู้ป่วย</label>
+                        <input type="text" id="patientName" placeholder="ระบุชื่อผู้ป่วย" required class="w-full p-3 bg-slate-50 border-0 rounded-2xl focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">ประเภทการนวด (เลือกได้มากกว่า 1)</label>
+                        <label class="flex items-center gap-3 p-3 border rounded-2xl cursor-pointer hover:bg-slate-50 transition-colors group">
+                            <input type="checkbox" id="type_foot" onchange="updateTimeAndPrice()" class="w-5 h-5 accent-indigo-600">
+                            <span class="text-sm font-medium group-hover:text-indigo-600">นวดเท้า (45 นาที) - 150.-</span>
+                        </label>
+                        <label class="flex items-center gap-3 p-3 border rounded-2xl cursor-pointer hover:bg-slate-50 transition-colors group">
+                            <input type="checkbox" id="type_shoulder" onchange="updateTimeAndPrice()" class="w-5 h-5 accent-purple-600">
+                            <span class="text-sm font-medium group-hover:text-purple-600">นวดบ่า (30 นาที) - 120.-</span>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-400">เริ่ม</label>
+                            <input type="time" id="startTime" required onchange="updateTimeAndPrice()" class="w-full p-3 bg-slate-50 border-0 rounded-2xl">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-400">เสร็จ</label>
+                            <div id="finishTimeLabel" class="p-3 bg-slate-100 rounded-2xl text-center font-bold text-slate-400">--:--</div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">การชำระเงิน</label>
+                        <div class="grid grid-cols-2 gap-2 mt-1">
+                            <label class="cursor-pointer"><input type="radio" name="payment" value="โอน" checked class="peer hidden"><div class="p-2 text-center rounded-xl border-2 peer-checked:border-indigo-600 peer-checked:bg-indigo-50 text-xs font-bold transition-all">โอนเงิน</div></label>
+                            <label class="cursor-pointer"><input type="radio" name="payment" value="เงินสด" class="peer hidden"><div class="p-2 text-center rounded-xl border-2 peer-checked:border-orange-600 peer-checked:bg-orange-50 text-xs font-bold transition-all">เงินสด</div></label>
+                        </div>
+                    </div>
+                    <button type="submit" id="submitBtn" class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all active:scale-[0.98]">บันทึกข้อมูล</button>
+                    <button type="button" id="cancelEditBtn" onclick="resetForm()" class="hidden w-full py-4 bg-slate-200 text-slate-600 rounded-2xl font-bold transition-all">ยกเลิกการแก้ไข</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="lg:col-span-8">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-6 border-b flex justify-between items-center">
+                    <h2 class="font-bold text-slate-800 flex items-center gap-2"><i data-lucide="calendar"></i> รายการของวันที่ <span id="displayDate" class="text-indigo-600">--/--/--</span></h2>
+                    <div class="flex items-center gap-2 text-[10px]">
+                        <span class="sync-text text-slate-400 font-bold uppercase tracking-wider">Cloud Status</span>
+                        <div class="sync-dot w-2 h-2 rounded-full bg-slate-300"></div>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-400 text-[10px] uppercase font-bold">
+                            <tr>
+                                <th class="px-6 py-4 text-left">ผู้นวด / ผู้ป่วย</th>
+                                <th class="px-6 py-4 text-center">ประเภท / เวลา</th>
+                                <th class="px-6 py-4 text-right">รายได้สุทธิ</th>
+                                <th class="px-6 py-4 no-print"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-summary" class="hidden animate-in fade-in duration-500">
+        <div class="bg-indigo-900 text-white rounded-3xl p-6 mb-8 flex flex-col md:flex-row justify-between items-center gap-4 border shadow-xl">
+            <div class="flex items-center gap-4">
+                <div class="sync-dot w-4 h-4 rounded-full bg-emerald-500 pulse-green"></div>
+                <div>
+                    <h3 class="text-lg font-bold">สรุปรายงานประจำวัน >> ยืนยันความถูกต้อง</h3>
+                    <p class="text-indigo-200 text-xs">ข้อมูลได้รับการซิงค์กับ Google Sheet เรียบร้อยแล้ว (อัปเดตล่าสุด: <span id="lastSyncTime">--:--</span>)</p>
+                </div>
+            </div>
+            <div class="flex gap-2 no-print">
+                <button onclick="window.print()" class="px-6 py-2 bg-white/10 hover:bg-white/20 rounded-xl font-bold flex items-center gap-2 text-sm transition-all">
+                    <i data-lucide="printer" class="w-4 h-4"></i> พิมพ์ PDF / รายงาน
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
+            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">ยอดเงินรวมทั้งหมด</p><p id="sumTotal" class="text-2xl font-black text-indigo-900">0</p></div>
+            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">ผู้มารับบริการ</p><p id="sumPatients" class="text-2xl font-black">0</p></div>
+            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">เงินเข้าโรงพยาบาล</p><p id="sumHospital" class="text-2xl font-black text-emerald-600">0</p></div>
+            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">เข้ากองกลาง</p><p id="sumCentral" class="text-2xl font-black text-purple-600">0</p></div>
+            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">เงินโอน</p><p id="sumTransfer" class="text-2xl font-black text-blue-600">0</p></div>
+            <div class="bg-white p-6 rounded-3xl border card text-center"><p class="text-[10px] font-bold text-slate-400 uppercase">เงินสด</p><p id="sumCash" class="text-2xl font-black text-orange-600">0</p></div>
+        </div>
+
+        <div class="bg-white rounded-3xl border shadow-sm overflow-hidden card">
+            <div class="p-6 border-b bg-slate-50"><h3 class="font-bold flex items-center gap-2"><i data-lucide="users" class="text-indigo-500"></i> สรุปรายบุคคล (ผู้นวด)</h3></div>
+            <table class="w-full text-sm">
+                <thead class="bg-slate-50 font-bold text-slate-500 text-[10px] uppercase">
+                    <tr><th class="px-6 py-4 text-left">ชื่อ</th><th class="px-6 py-4 text-center">เท้า (เคส)</th><th class="px-6 py-4 text-center">บ่า (เคส)</th><th class="px-6 py-4 text-right">เงินที่ได้รับ</th></tr>
+                </thead>
+                <tbody id="summaryTableBody" class="divide-y divide-slate-100"></tbody>
+            </table>
+        </div>
+    </div>
+</main>
+
+<script>
+    function updateTimeAndPrice() {
+        const start = document.getElementById('startTime').value;
+        if (!start) return;
+        let dur = 0;
+        if (document.getElementById('type_foot').checked) dur += CONFIG.FOOT.duration;
+        if (document.getElementById('type_shoulder').checked) dur += CONFIG.SHOULDER.duration;
+        const [h, m] = start.split(':').map(Number);
+        const d = new Date(); d.setHours(h, m + dur);
+        document.getElementById('finishTimeLabel').innerText = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+        const typeKeys = [];
+        if (document.getElementById('type_foot').checked) typeKeys.push('FOOT');
+        if (document.getElementById('type_shoulder').checked) typeKeys.push('SHOULDER');
+        if (typeKeys.length === 0) { showToast("กรุณาเลือกประเภทการนวด", "error"); return; }
+
+        const staffName = document.getElementById('staffName').value;
+        const date = document.getElementById('date').value;
+        // เช็คเท้าเคสแรก เฉพาะคนและเฉพาะวัน
+        const isFootFirst = typeKeys.includes('FOOT') && !records.some(r => r.staffName === staffName && r.date === date && r.typeKeys.includes('FOOT') && r.id !== editingId);
+
+        let earnings = { price: 0, staff: 0, hospital: 0, central: 0 };
+        typeKeys.forEach(k => {
+            const c = CONFIG[k]; 
+            earnings.price += c.price;
+            if (k === 'FOOT' && isFootFirst) { 
+                earnings.staff += c.price; 
+            } else { 
+                earnings.staff += c.split.staff; earnings.hospital += c.split.hospital; earnings.central += c.split.central; 
+            }
+        });
+
+        const record = {
+            id: editingId || Date.now().toString(),
+            date, staffName, patientName: document.getElementById('patientName').value,
+            typeKeys, typeLabel: typeKeys.map(k => CONFIG[k].label).join(' + '),
+            startTime: document.getElementById('startTime').value,
+            finishTime: document.getElementById('finishTimeLabel').innerText,
+            payment: document.querySelector('input[name="payment"]:checked').value,
+            earnings, isFootFirst
+        };
+
+        const success = await callCloud(editingId ? "update" : "create", record);
+        if (success) {
+            if (editingId) records = records.map(r => r.id === editingId ? record : r);
+            else records.unshift(record);
+            showToast(editingId ? "แก้ไขข้อมูลสำเร็จ" : "บันทึกข้อมูลสำเร็จ", "success");
+            resetForm(); renderRecords(); updateSummary();
+        } else {
+            showToast("ไม่สามารถบันทึกข้อมูลได้", "error");
+        }
+    }
+
+    function renderRecords() {
+        const dateVal = document.getElementById('date').value;
+        document.getElementById('displayDate').innerText = dateVal;
+        const filtered = records.filter(r => r.date === dateVal);
+        document.getElementById('tableBody').innerHTML = filtered.length ? filtered.map(r => `
+            <tr class="hover:bg-slate-50 group">
+                <td class="px-6 py-4"><b>${r.staffName}</b><br><span class="text-xs text-slate-400">ผู้ป่วย: ${r.patientName}</span></td>
+                <td class="px-6 py-4 text-center text-xs">
+                    <div class="flex gap-1 justify-center mb-1">
+                        ${r.typeKeys.map(k => `<span class="px-2 py-0.5 rounded-full ${k === 'FOOT' ? 'bg-indigo-50 text-indigo-600' : 'bg-purple-50 text-purple-600'} font-bold">${CONFIG[k].label}</span>`).join('')}
+                    </div>
+                    <span class="text-slate-400 font-mono">${r.startTime} - ${r.finishTime}</span>
+                </td>
+                <td class="px-6 py-4 text-right">
+                    <span class="font-bold text-slate-800">${r.earnings.staff.toLocaleString()} ฿</span>
+                    ${r.isFootFirst ? '<br><span class="text-[9px] font-black text-emerald-500 uppercase">เท้าเคสแรก</span>' : ''}
+                </td>
+                <td class="px-6 py-4 text-right no-print">
+                    <div class="flex justify-end gap-1 opacity-0 group-hover:opacity-100">
+                        <button onclick="editRecord('${r.id}')" class="p-2 text-indigo-500 hover:bg-indigo-50 rounded-xl"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                        <button onclick="deleteRecord('${r.id}')" class="p-2 text-red-400 hover:bg-red-50 rounded-xl"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    </div>
+                </td>
+            </tr>
+        `).join('') : `<tr><td colspan="4" class="p-20 text-center text-slate-400">ไม่มีข้อมูลสำหรับวันนี้</td></tr>`;
+        lucide.createIcons();
+    }
+
+    function updateSummary() {
+        const dateVal = document.getElementById('date').value;
+        const filtered = records.filter(r => r.date === dateVal);
+        let stats = { total: 0, patients: filtered.length, hospital: 0, central: 0, transfer: 0, cash: 0 };
+        let staffSummary = {};
+
+        filtered.forEach(r => {
+            stats.total += r.earnings.price; stats.hospital += r.earnings.hospital; stats.central += r.earnings.central;
+            if (r.payment === 'โอน') stats.transfer += r.earnings.price; else stats.cash += r.earnings.price;
+            if (!staffSummary[r.staffName]) staffSummary[r.staffName] = { foot: 0, shoulder: 0, income: 0 };
+            r.typeKeys.forEach(k => { if(k === 'FOOT') staffSummary[r.staffName].foot++; else staffSummary[r.staffName].shoulder++; });
+            staffSummary[r.staffName].income += r.earnings.staff;
+        });
+
+        document.getElementById('sumTotal').innerText = stats.total.toLocaleString();
+        document.getElementById('sumPatients').innerText = stats.patients;
+        document.getElementById('sumHospital').innerText = stats.hospital.toLocaleString();
+        document.getElementById('sumCentral').innerText = stats.central.toLocaleString();
+        document.getElementById('sumTransfer').innerText = stats.transfer.toLocaleString();
+        document.getElementById('sumCash').innerText = stats.cash.toLocaleString();
+
+        document.getElementById('summaryTableBody').innerHTML = Object.entries(staffSummary).map(([name, s]) => `
+            <tr><td class="px-6 py-4 font-bold text-slate-700">${name}</td><td class="px-6 py-4 text-center">${s.foot}</td><td class="px-6 py-4 text-center">${s.shoulder}</td><td class="px-6 py-4 text-right font-black text-indigo-600">${s.income.toLocaleString()} ฿</td></tr>
+        `).join('');
+    }
+
+    function editRecord(id) {
+        const r = records.find(x => x.id === id); if (!r) return;
+        editingId = id;
+        document.getElementById('date').value = r.date;
+        document.getElementById('staffName').value = r.staffName;
+        document.getElementById('patientName').value = r.patientName;
+        document.getElementById('type_foot').checked = r.typeKeys.includes('FOOT');
+        document.getElementById('type_shoulder').checked = r.typeKeys.includes('SHOULDER');
+        document.getElementById('startTime').value = r.startTime;
+        document.querySelector(`input[name="payment"][value="${r.payment}"]`).checked = true;
+        document.getElementById('submitBtn').innerText = "บันทึกการแก้ไข";
+        document.getElementById('submitBtn').className = "w-full py-4 bg-orange-500 text-white rounded-2xl font-bold shadow-lg";
+        document.getElementById('cancelEditBtn').classList.remove('hidden');
+        updateTimeAndPrice(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function deleteRecord(id) {
+        if(!confirm("ยืนยันการลบข้อมูลนี้ออกจาก Google Sheet?")) return;
+        const success = await callCloud("delete", { id });
+        if (success) {
+            records = records.filter(x => x.id !== id); renderRecords(); updateSummary();
+            showToast("ลบข้อมูลสำเร็จ", "info");
+        }
+    }
+
+    function showView(v) {
+        document.getElementById('view-form').classList.toggle('hidden', v !== 'form');
+        document.getElementById('view-summary').classList.toggle('hidden', v !== 'summary');
+    }
+
+    function addStaff() {
+        const n = prompt("พิมพ์ชื่อผู้นวดใหม่:");
+        if (n && !staffList.includes(n)) { staffList.push(n); localStorage.setItem('massage_staff_list', JSON.stringify(staffList)); renderStaffSelect(); }
+    }
+
+    function renderStaffSelect() {
+        document.getElementById('staffName').innerHTML = staffList.map(n => `<option value="${n}">${n}</option>`).join('');
+    }
+
+    function resetForm() {
+        editingId = null; document.getElementById('mainForm').reset();
+        document.getElementById('date').valueAsDate = new Date();
+        document.getElementById('startTime').value = new Date().toLocaleTimeString('th-TH', {hour12:false, hour:'2-digit', minute:'2-digit'});
+        document.getElementById('submitBtn').innerText = "บันทึกข้อมูล";
+        document.getElementById('submitBtn').className = "w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg";
+        document.getElementById('cancelEditBtn').classList.add('hidden');
+        updateTimeAndPrice();
+    }
+
+    window.onload = () => {
+        resetForm(); renderStaffSelect(); fetchDataFromCloud(); 
+        document.getElementById('lastSyncTime').innerText = new Date().toLocaleTimeString('th-TH');
+    };
+</script>
+</body>
+</html>
