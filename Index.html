@@ -31,7 +31,11 @@
             <div class="flex gap-2">
                 <button @click="currentTab = 'form'" :class="currentTab === 'form' ? 'bg-white text-green-700' : 'bg-green-600 hover:bg-green-500'" class="px-4 py-2 rounded-lg font-medium transition duration-200 text-sm sm:text-base">บันทึกข้อมูล</button>
                 <button @click="currentTab = 'summary'" :class="currentTab === 'summary' ? 'bg-white text-green-700' : 'bg-green-600 hover:bg-green-500'" class="px-4 py-2 rounded-lg font-medium transition duration-200 text-sm sm:text-base">สรุปรายวัน</button>
-                <button @click="showSettings = true" class="bg-green-800 hover:bg-green-900 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm sm:text-base">ตั้งค่า (Sheets)</button>
+                <button @click="loadDataFromSheet" :disabled="isFetching" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium transition duration-200 text-sm sm:text-base flex items-center gap-2">
+                    <svg v-if="isFetching" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    ซิงค์ข้อมูล
+                </button>
             </div>
         </header>
 
@@ -67,12 +71,20 @@
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">ประเภทการนวด</label>
-                            <select v-model="form.type" @change="calculateEndTime" required class="w-full border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 p-2.5 border">
-                                <option value="" disabled>เลือกประเภท</option>
-                                <option value="นวดเท้า">นวดเท้า (45 นาที - 150 บ.)</option>
-                                <option value="นวดบ่า">นวดบ่า (30 นาที - 120 บ.)</option>
-                            </select>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">ประเภทการนวด (เลือกได้มากกว่า 1)</label>
+                            <div class="flex gap-3">
+                                <button type="button" @click="toggleType('นวดเท้า')"
+                                    :class="form.type.includes('นวดเท้า') ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-300 ring-offset-1' : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:border-blue-300'"
+                                    class="flex-1 border-2 p-3 rounded-xl font-bold transition-all duration-200 flex items-center justify-center gap-2">
+                                    นวดเท้า
+                                </button>
+                                <button type="button" @click="toggleType('นวดบ่า')"
+                                    :class="form.type.includes('นวดบ่า') ? 'bg-purple-600 text-white border-purple-600 shadow-md ring-2 ring-purple-300 ring-offset-1' : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50 hover:border-purple-300'"
+                                    class="flex-1 border-2 p-3 rounded-xl font-bold transition-all duration-200 flex items-center justify-center gap-2">
+                                    นวดบ่า
+                                </button>
+                            </div>
+                            <p v-if="form.type.length === 0" class="text-red-500 text-xs mt-1">กรุณาเลือกประเภทการนวดอย่างน้อย 1 รายการ</p>
                         </div>
 
                         <div>
@@ -87,11 +99,21 @@
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">วิธีการชำระเงิน</label>
-                            <select v-model="form.paymentMethod" required class="w-full border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 p-2.5 border">
-                                <option value="เงินสด">เงินสด</option>
-                                <option value="โอน">โอน</option>
-                            </select>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">วิธีการชำระเงิน</label>
+                            <div class="flex gap-3">
+                                <button type="button" @click="form.paymentMethod = 'เงินสด'"
+                                    :class="form.paymentMethod === 'เงินสด' ? 'bg-green-600 text-white border-green-600 shadow-md ring-2 ring-green-300 ring-offset-1' : 'bg-white text-gray-700 border-gray-300 hover:bg-green-50 hover:border-green-300'"
+                                    class="flex-1 border-2 p-3 rounded-xl font-bold transition-all duration-200 flex items-center justify-center gap-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                    เงินสด
+                                </button>
+                                <button type="button" @click="form.paymentMethod = 'โอน'"
+                                    :class="form.paymentMethod === 'โอน' ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-300 ring-offset-1' : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:border-blue-300'"
+                                    class="flex-1 border-2 p-3 rounded-xl font-bold transition-all duration-200 flex items-center justify-center gap-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                    โอนเงิน
+                                </button>
+                            </div>
                         </div>
 
                         <div class="pt-4 flex gap-2">
@@ -109,9 +131,16 @@
                 <div class="glass-panel p-6 rounded-2xl h-full flex flex-col">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-semibold text-gray-800">รายการนวดล่าสุด</h2>
-                        <div class="flex items-center gap-2">
-                            <label class="text-sm text-gray-600">กรองวันที่:</label>
-                            <input type="date" v-model="filterDate" class="border-gray-300 rounded-lg shadow-sm p-1.5 border text-sm">
+                        <div class="flex flex-col items-end gap-2">
+                            <!-- ปรับข้อความให้นับแยกระหว่างของวันนี้ กับ ทั้งหมด -->
+                            <span class="text-xs sm:text-sm text-blue-700 bg-blue-100 px-3 py-1.5 rounded-lg font-medium">
+                                ของวันที่เลือก: {{ filteredRecords.length }} รายการ (จากทั้งหมด {{ records.length }})
+                            </span>
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm text-gray-600">กรองวันที่:</label>
+                                <!-- เพิ่มปุ่มล้างวันที่ (Clear) โดยใช้คุณสมบัติของ input date หรือให้ผู้ใช้ลบค่าได้ -->
+                                <input type="date" v-model="filterDate" class="border-gray-300 rounded-lg shadow-sm p-1.5 border text-sm" title="ลบวันที่ออกเพื่อดูข้อมูลทั้งหมด">
+                            </div>
                         </div>
                     </div>
                     
@@ -119,7 +148,8 @@
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50 sticky top-0">
                                 <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">เวลา</th>
+                                    <!-- เปลี่ยนคอลัมน์เวลา ให้แสดง วันที่ ด้วย -->
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">วัน/เวลา</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ชื่อผู้ป่วย</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ประเภท</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ผู้นวด</th>
@@ -130,15 +160,27 @@
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-if="filteredRecords.length === 0">
-                                    <td colspan="7" class="px-6 py-10 text-center text-gray-500">ไม่มีข้อมูลในวันที่เลือก</td>
+                                    <td colspan="7" class="px-6 py-10 text-center text-gray-500">
+                                        ไม่มีข้อมูลในวันที่เลือก <br>
+                                        <span class="text-xs text-blue-500 cursor-pointer" @click="filterDate = ''">คลิกที่นี่เพื่อแสดงข้อมูลทั้งหมด ({{ records.length }} รายการ)</span>
+                                    </td>
                                 </tr>
                                 <tr v-for="record in sortedFilteredRecords" :key="record.id" class="hover:bg-green-50 transition-colors">
-                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ record.startTime }} - {{ record.endTime }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                        <!-- นำวันที่มาแสดงให้เห็นชัดเจน ป้องกันการสับสนว่าหายไปไหน -->
+                                        <div class="text-xs text-green-700 font-medium pb-1">{{ formatDate(record.date) }}</div>
+                                        <div class="text-gray-600">{{ record.startTime }} - {{ record.endTime }}</div>
+                                    </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{{ record.patientName }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm">
-                                        <span :class="record.type === 'นวดเท้า' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full">
-                                            {{ record.type }}
-                                        </span>
+                                        <div class="flex flex-col gap-1 items-start">
+                                            <span v-if="record.type && record.type.includes('นวดเท้า')" class="bg-blue-100 text-blue-800 px-2 inline-flex text-xs leading-5 font-semibold rounded-full">
+                                                นวดเท้า
+                                            </span>
+                                            <span v-if="record.type && record.type.includes('นวดบ่า')" class="bg-purple-100 text-purple-800 px-2 inline-flex text-xs leading-5 font-semibold rounded-full">
+                                                นวดบ่า
+                                            </span>
+                                        </div>
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ record.masseuse }}</td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right">{{ record.price }} ฿</td>
@@ -293,31 +335,6 @@
             </div>
         </transition>
 
-        <!-- Modal: Settings (Google Sheets) -->
-        <transition name="fade">
-            <div v-if="showSettings" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden">
-                    <div class="bg-gray-800 p-4 flex justify-between items-center">
-                        <h3 class="text-lg font-bold text-white">ตั้งค่าการเชื่อมต่อ Google Sheets</h3>
-                        <button @click="showSettings = false" class="text-gray-400 hover:text-white">&times;</button>
-                    </div>
-                    <div class="p-6">
-                        <div class="bg-blue-50 text-blue-800 p-4 rounded-lg text-sm mb-6 border border-blue-200">
-                            <strong>สถานะปัจจุบัน:</strong> ข้อมูลถูกบันทึกในเครื่อง (Local Storage)<br>
-                            หากต้องการบันทึกขึ้น Google Sheet โดยอัตโนมัติ ให้นำ Web App URL ที่ได้จาก Google Apps Script มาใส่ด้านล่าง
-                        </div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Google Apps Script Web App URL</label>
-                        <input type="url" v-model="sheetUrl" placeholder="https://script.google.com/macros/s/..." class="w-full border-gray-300 rounded-lg shadow-sm p-3 border mb-2 focus:ring-blue-500">
-                        <p class="text-xs text-gray-500 mb-6">ทิ้งว่างไว้หากต้องการใช้ระบบ Local Storage ตามปกติ</p>
-                        
-                        <div class="flex justify-end gap-2">
-                            <button @click="saveSettings" class="px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">บันทึกการตั้งค่า</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </transition>
-
         <!-- Notification Toast -->
         <transition name="fade">
             <div v-if="toast.show" class="fixed bottom-4 right-4 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50">
@@ -332,18 +349,32 @@
     <script>
         const { createApp, ref, computed, watch, onMounted } = Vue;
 
-        createApp({
+        const app = createApp({
             setup() {
                 // State
                 const currentTab = ref('form');
                 const showAddMasseuse = ref(false);
-                const showSettings = ref(false);
+                const isFetching = ref(false);
                 const isLoading = ref(false);
-                const sheetUrl = ref(localStorage.getItem('sheetUrl') || '');
+                const sheetUrl = ref('https://script.google.com/macros/s/AKfycbxiEGRc-FUZt6Vvg02jZ1Bf9ZdZcEaz_h0WXIOjec8C-c9fldqL6jDsahXIFXhP7dtb/exec');
                 
                 const newMasseuseName = ref('');
-                const masseuses = ref(JSON.parse(localStorage.getItem('masseuses')) || ['หมอเอ', 'หมอบี', 'หมอซี']);
-                const records = ref(JSON.parse(localStorage.getItem('records')) || []);
+                
+                // ฟังก์ชันดึงข้อมูลจากเครื่องอย่างปลอดภัย (ป้องกันจอขาวกรณีข้อมูลเก่าพัง)
+                const getSafeLocalStorage = (key, defaultVal) => {
+                    try {
+                        const item = localStorage.getItem(key);
+                        if (!item) return defaultVal;
+                        const parsed = JSON.parse(item);
+                        if (Array.isArray(defaultVal) && !Array.isArray(parsed)) return defaultVal;
+                        return parsed;
+                    } catch {
+                        return defaultVal;
+                    }
+                };
+
+                const masseuses = ref(getSafeLocalStorage('masseuses', ['หมอเอ', 'หมอบี', 'หมอซี']));
+                const records = ref(getSafeLocalStorage('records', []));
                 
                 const today = new Date().toISOString().split('T')[0];
                 const filterDate = ref(today);
@@ -354,11 +385,11 @@
                     patientName: '',
                     startTime: '',
                     endTime: '',
-                    type: '',
+                    type: [], // เปลี่ยนเป็น Array เพื่อรองรับการเลือกหลายอัน
                     masseuse: '',
                     paymentMethod: 'เงินสด'
                 };
-                const form = ref({ ...defaultForm });
+                const form = ref({ ...defaultForm, type: [] });
 
                 const toast = ref({ show: false, message: '', type: 'success' });
 
@@ -374,12 +405,29 @@
 
                 const formatDate = (dateString) => {
                     if(!dateString) return '';
-                    const options = { year: 'numeric', month: 'long', day: 'numeric' };
-                    return new Date(dateString).toLocaleDateString('th-TH', options);
+                    try {
+                        const dateObj = new Date(dateString);
+                        if (isNaN(dateObj)) return dateString;
+                        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+                        return dateObj.toLocaleDateString('th-TH', options);
+                    } catch(e) {
+                        return dateString;
+                    }
+                };
+
+                const toggleType = (t) => {
+                    if (!Array.isArray(form.value.type)) form.value.type = [];
+                    const idx = form.value.type.indexOf(t);
+                    if (idx > -1) {
+                        form.value.type.splice(idx, 1);
+                    } else {
+                        form.value.type.push(t);
+                    }
+                    calculateEndTime();
                 };
 
                 const calculateEndTime = () => {
-                    if (!form.value.startTime || !form.value.type) {
+                    if (!form.value.startTime || form.value.type.length === 0) {
                         form.value.endTime = '';
                         return;
                     }
@@ -387,7 +435,10 @@
                     const dateObj = new Date();
                     dateObj.setHours(hours, minutes, 0, 0);
                     
-                    const addMinutes = form.value.type === 'นวดเท้า' ? 45 : 30;
+                    let addMinutes = 0;
+                    if (form.value.type.includes('นวดเท้า')) addMinutes += 45;
+                    if (form.value.type.includes('นวดบ่า')) addMinutes += 30;
+                    
                     dateObj.setMinutes(dateObj.getMinutes() + addMinutes);
                     
                     const endHours = String(dateObj.getHours()).padStart(2, '0');
@@ -398,52 +449,148 @@
                 // ฟังก์ชันคำนวณส่วนแบ่งของทั้งวันใหม่ เพื่อให้ถูกต้องเสมอ (แม้จะมีการลบหรือแก้ไขข้อมูล)
                 const recalculateSplitsForDate = (date) => {
                     // ดึงรายการของวันนี้ทั้งหมด
-                    const dayRecords = records.value.filter(r => r.date === date);
+                    const dayRecords = (records.value || []).filter(r => r.date === date);
                     
                     // จัดกลุ่มตามผู้นวด
                     const byMasseuse = {};
                     dayRecords.forEach(r => {
-                        if (!byMasseuse[r.masseuse]) byMasseuse[r.masseuse] = [];
-                        byMasseuse[r.masseuse].push(r);
+                        const m = r.masseuse || 'ไม่ระบุ';
+                        if (!byMasseuse[m]) byMasseuse[m] = [];
+                        byMasseuse[m].push(r);
                     });
 
                     // วนลูปคำนวณใหม่
                     for (const m in byMasseuse) {
-                        // เรียงตามเวลาเริ่มนวด (สำคัญมากในการหาเคสแรก)
-                        byMasseuse[m].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                        // เรียงตามเวลาเริ่มนวดอย่างปลอดภัย (ป้องกัน Error กรณีไม่ได้ใส่เวลามา)
+                        byMasseuse[m].sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')));
                         
                         let foundFirstFoot = false;
                         
                         byMasseuse[m].forEach(record => {
-                            if (record.type === 'นวดบ่า') {
-                                record.price = 120;
-                                record.masseuseCut = 70;
-                                record.hospitalCut = 48;
-                                record.centralCut = 2;
-                            } else if (record.type === 'นวดเท้า') {
-                                record.price = 150;
-                                record.centralCut = 0;
+                            // รีเซ็ตค่าก่อนคำนวณรอบใหม่
+                            record.price = 0;
+                            record.masseuseCut = 0;
+                            record.hospitalCut = 0;
+                            record.centralCut = 0;
+
+                            const typeStr = record.type || '';
+
+                            // คำนวณส่วนนวดบ่า
+                            if (typeStr.includes('นวดบ่า')) {
+                                record.price += 120;
+                                record.masseuseCut += 70;
+                                record.hospitalCut += 48;
+                                record.centralCut += 2;
+                            } 
+                            
+                            // คำนวณส่วนนวดเท้า
+                            if (typeStr.includes('นวดเท้า')) {
+                                record.price += 150;
+                                record.centralCut += 0;
                                 
                                 if (!foundFirstFoot) {
                                     // เคสแรกของวัน
-                                    record.masseuseCut = 150;
-                                    record.hospitalCut = 0;
+                                    record.masseuseCut += 150;
+                                    record.hospitalCut += 0;
                                     foundFirstFoot = true;
                                 } else {
                                     // เคสที่ 2 เป็นต้นไป
-                                    record.masseuseCut = 90;
-                                    record.hospitalCut = 60;
+                                    record.masseuseCut += 90;
+                                    record.hospitalCut += 60;
                                 }
                             }
                         });
                     }
                 };
 
+                // เพิ่มความยืดหยุ่นในการแปลงวันที่ จาก Sheet (แก้ปัญหา Timezone เคลื่อน)
+                const normalizeDate = (dateStr) => {
+                    if (!dateStr) return '';
+                    let str = String(dateStr).trim();
+                    
+                    // ป้องกัน Timezone UTC ทำให้วันที่ถอยหลังไป 1 วัน (เช่น 2026-05-14T17:00:00Z)
+                    if (str.includes('T')) {
+                        str = str.split('T')[0];
+                    }
+
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+                        return str;
+                    }
+
+                    if (str.includes('/')) {
+                        const parts = str.split('/');
+                        if (parts.length === 3) {
+                            let year = parseInt(parts[2]);
+                            if (year < 100) year += 2000;
+                            if (year > 2500) year -= 543;
+                            const month = parts[1].padStart(2, '0');
+                            const day = parts[0].padStart(2, '0');
+                            return `${year}-${month}-${day}`;
+                        }
+                    }
+                    
+                    const d = new Date(str);
+                    if (!isNaN(d.getTime())) {
+                        const year = d.getFullYear();
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    }
+                    return str;
+                };
+
+                const loadDataFromSheet = async () => {
+                    if (!navigator.onLine) {
+                        showToast('ไม่มีการเชื่อมต่ออินเทอร์เน็ต ระบบจะใช้ข้อมูลในเครื่อง', 'error');
+                        return;
+                    }
+                    
+                    isFetching.value = true;
+                    try {
+                        const fetchUrl = sheetUrl.value + '?t=' + new Date().getTime();
+                        const res = await fetch(fetchUrl);
+                        const textData = await res.text();
+                        
+                        if (textData.trim().startsWith('<')) {
+                            throw new Error('Google บล็อกการเข้าถึง (ลืมตั้งสิทธิ์เป็น "ทุกคน" หรือใช้ URL เก่า)');
+                        }
+
+                        const data = JSON.parse(textData);
+                        
+                        if(Array.isArray(data)) {
+                            records.value = data.map(r => {
+                                return { ...r, date: normalizeDate(r.date) };
+                            });
+                            
+                            const remoteMasseuses = [...new Set(data.map(r => r.masseuse).filter(Boolean))];
+                            remoteMasseuses.forEach(m => {
+                                if(!masseuses.value.includes(m)) masseuses.value.push(m);
+                            });
+                            
+                            saveToLocal();
+                            showToast('โหลดข้อมูลจาก Google Sheet สำเร็จ');
+                        } else if (data.error) {
+                            throw new Error(data.error);
+                        }
+                    } catch(e) {
+                        console.warn('Fetch Warning:', e.message); 
+                        showToast(`เชื่อมต่อล้มเหลว: ${e.message}`, 'error');
+                    } finally {
+                        isFetching.value = false;
+                    }
+                };
+
                 const saveRecord = async () => {
+                    if (form.value.type.length === 0) {
+                        showToast('กรุณาเลือกประเภทการนวดอย่างน้อย 1 รายการ', 'error');
+                        return;
+                    }
+
                     isLoading.value = true;
                     
                     const recordData = {
                         ...form.value,
+                        type: form.value.type.join(', '), // แปลง Array เป็นข้อความเมื่อบันทึกลงฐานข้อมูล (เพื่อให้เข้ากันได้กับ Google Sheet และข้อมูลเดิม)
                         id: editingId.value || Date.now().toString(),
                         timestamp: new Date().toISOString()
                     };
@@ -467,14 +614,14 @@
                             formData.append('action', editingId.value ? 'UPDATE' : 'CREATE');
                             formData.append('data', JSON.stringify(recordData));
                             
-                            // ส่งข้อมูลแบบ no-cors หรือฟอร์มเพื่อไม่ให้ติด CORS (ขึ้นอยู่กับการเขียน GAS)
+                            // ส่งข้อมูลแบบ no-cors ป้องกันติดปัญหา CORS ในเบราว์เซอร์
                             await fetch(sheetUrl.value, {
                                 method: 'POST',
+                                mode: 'no-cors',
                                 body: formData,
                             });
                         } catch (e) {
                             console.error('Sheet Sync Error', e);
-                            // ไม่แจ้งเตือน error ให้รบกวนผู้ใช้ เนื่องจากข้อมูลลง Local แล้ว
                         }
                     }
 
@@ -485,6 +632,8 @@
 
                 const editRecord = (record) => {
                     form.value = { ...record };
+                    // แปลงข้อความกลับมาเป็น Array เพื่อให้แสดงในปุ่มแบบ Toggle ถูกต้อง
+                    form.value.type = record.type ? record.type.split(',').map(t => t.trim()) : [];
                     editingId.value = record.id;
                     currentTab.value = 'form';
                     window.scrollTo(0,0);
@@ -502,18 +651,18 @@
                         saveToLocal();
                         showToast('ลบรายการสำเร็จ');
                         
-                        // Optional Sync Delete
+                        // Sync Delete
                         if (sheetUrl.value) {
                             const formData = new FormData();
                             formData.append('action', 'DELETE');
                             formData.append('id', id);
-                            fetch(sheetUrl.value, { method: 'POST', body: formData }).catch(e=>console.log(e));
+                            fetch(sheetUrl.value, { method: 'POST', mode: 'no-cors', body: formData }).catch(e=>console.log(e));
                         }
                     }
                 };
 
                 const resetForm = () => {
-                    form.value = { ...defaultForm, date: filterDate.value }; // ให้จำวันที่กำลังเลือกอยู่
+                    form.value = { ...defaultForm, date: filterDate.value, type: [] }; // ให้จำวันที่กำลังเลือกอยู่ และเคลียร์การเลือกประเภท
                     editingId.value = null;
                 };
 
@@ -528,19 +677,19 @@
                     newMasseuseName.value = '';
                 };
 
-                const saveSettings = () => {
-                    localStorage.setItem('sheetUrl', sheetUrl.value);
-                    showSettings.value = false;
-                    showToast('บันทึกการตั้งค่าแล้ว');
-                };
-
+                // แก้ไขให้ถ้าไม่ได้เลือกวันที่ ให้โชว์ข้อมูลทั้งหมด
                 const filteredRecords = computed(() => {
-                    return records.value.filter(r => r.date === filterDate.value);
+                    if (!filterDate.value) return records.value || [];
+                    return (records.value || []).filter(r => r.date === filterDate.value);
                 });
 
                 const sortedFilteredRecords = computed(() => {
-                    // เรียงตามเวลาล่าสุดขึ้นก่อน ในหน้าแสดงผลตาราง
-                    return [...filteredRecords.value].sort((a, b) => b.startTime.localeCompare(a.startTime));
+                    // เรียงตามวันที่ล่าสุดก่อน แล้วค่อยเรียงตามเวลา
+                    return [...filteredRecords.value].sort((a, b) => {
+                        const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
+                        if (dateCompare !== 0) return dateCompare;
+                        return String(b.startTime || '').localeCompare(String(a.startTime || ''));
+                    });
                 });
 
                 const summary = computed(() => {
@@ -561,8 +710,9 @@
                     const mStats = {};
 
                     daily.forEach(r => {
-                        if (r.type === 'นวดเท้า') result.footCases++;
-                        if (r.type === 'นวดบ่า') result.shoulderCases++;
+                        const typeStr = r.type || '';
+                        if (typeStr.includes('นวดเท้า')) result.footCases++;
+                        if (typeStr.includes('นวดบ่า')) result.shoulderCases++;
                         
                         result.totalRevenue += r.price;
                         result.totalHospital += r.hospitalCut;
@@ -577,8 +727,8 @@
                             mStats[r.masseuse] = { name: r.masseuse, totalCases: 0, footCases: 0, shoulderCases: 0, totalCut: 0 };
                         }
                         mStats[r.masseuse].totalCases++;
-                        if (r.type === 'นวดเท้า') mStats[r.masseuse].footCases++;
-                        if (r.type === 'นวดบ่า') mStats[r.masseuse].shoulderCases++;
+                        if (typeStr.includes('นวดเท้า')) mStats[r.masseuse].footCases++;
+                        if (typeStr.includes('นวดบ่า')) mStats[r.masseuse].shoulderCases++;
                         mStats[r.masseuse].totalCut += r.masseuseCut;
                     });
 
@@ -603,14 +753,30 @@
                     if(!editingId.value) form.value.date = newVal;
                 });
 
+                // ดึงข้อมูลอัตโนมัติตอนเปิดเว็บ
+                onMounted(() => {
+                    loadDataFromSheet();
+                });
+
                 return {
-                    currentTab, showAddMasseuse, showSettings, isLoading, sheetUrl,
+                    currentTab, showAddMasseuse, isFetching, isLoading, sheetUrl,
                     newMasseuseName, masseuses, form, filterDate, editingId, toast,
-                    calculateEndTime, saveRecord, editRecord, deleteRecord, resetForm, addMasseuse, saveSettings,
-                    filteredRecords, sortedFilteredRecords, summary, exportPDF, formatDate
+                    toggleType, calculateEndTime, saveRecord, editRecord, deleteRecord, resetForm, addMasseuse, loadDataFromSheet,
+                    filteredRecords, sortedFilteredRecords, summary, exportPDF, formatDate, records
                 };
             }
-        }).mount('#app');
+        });
+
+        // ระบบป้องกันหน้าจอขาวขั้นสูงสุด (ดักจับ Fatal Error)
+        app.config.errorHandler = (err) => {
+            console.error('System Error:', err);
+            alert("⚠️ ระบบพบข้อมูลที่ผิดปกติจนทำให้หน้าจอขาว\nสาเหตุ: " + err.message + "\n\nระบบจะทำการล้างข้อมูลแคชที่เสียหายและรีสตาร์ทอัตโนมัติเพื่อแก้ไขปัญหาครับ");
+            localStorage.removeItem('records');
+            localStorage.removeItem('masseuses');
+            window.location.reload();
+        };
+
+        app.mount('#app');
     </script>
 </body>
 </html>
