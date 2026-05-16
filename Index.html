@@ -371,7 +371,13 @@
                 const masseuses = ref(getSafeLocalStorage('masseuses', ['หมอเอ', 'หมอบี', 'หมอซี']));
                 const records = ref(getSafeLocalStorage('records', []));
                 
-                const today = new Date().toISOString().split('T')[0];
+                // Set default date to today in local timezone
+                const todayObj = new Date();
+                const todayYear = todayObj.getFullYear();
+                const todayMonth = String(todayObj.getMonth() + 1).padStart(2, '0');
+                const todayDay = String(todayObj.getDate()).padStart(2, '0');
+                const today = `${todayYear}-${todayMonth}-${todayDay}`;
+                
                 const filterDate = ref(today);
                 const editingId = ref(null);
 
@@ -398,9 +404,20 @@
                     localStorage.setItem('masseuses', JSON.stringify(masseuses.value));
                 };
 
+                // ฟังก์ชันแปลงวันที่สำหรับการแสดงผลภาษาไทย ป้องกัน Timezone เลื่อน
                 const formatDate = (dateString) => {
                     if(!dateString) return '';
                     try {
+                        const parts = dateString.split('-');
+                        if (parts.length === 3) {
+                            const year = parseInt(parts[0]);
+                            const month = parseInt(parts[1]) - 1;
+                            const day = parseInt(parts[2]);
+                            const dateObj = new Date(year, month, day);
+                            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+                            return dateObj.toLocaleDateString('th-TH', options);
+                        }
+
                         const dateObj = new Date(dateString);
                         if (isNaN(dateObj)) return dateString;
                         const options = { year: 'numeric', month: 'long', day: 'numeric' };
@@ -441,8 +458,6 @@
                     form.value.endTime = `${endHours}:${endMins}`;
                 };
 
-                // ฟังก์ชันใหม่: สแกนและคำนวณเฉพาะวันที่ทำการแก้ไข/บันทึกเท่านั้น 
-                // เพื่อรักษายอดตัวเลขเก่าในอดีตให้ตรงกับ Sheet ไม่ให้ถูกเขียนทับ
                 const recalculateSplitsForDate = (targetDate) => {
                     const dayRecords = records.value.filter(r => r.date === targetDate);
                     
@@ -500,15 +515,24 @@
                     }
                 };
 
+                // ฟังก์ชันจัดรูปแบบวันที่จาก Sheet ใหม่ เพื่อป้องกันวันที่ถอยหลัง
                 const normalizeDate = (dateStr) => {
                     if (!dateStr) return '';
                     let str = String(dateStr).trim();
-                    if (str.includes('T')) {
-                        str = str.split('T')[0];
-                    }
+                    
                     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
                         return str;
                     }
+
+                    // เอา Timezone ของเครื่องมารับข้อมูลก่อนแล้วค่อยสกัดวันที่ ป้องกัน Timezone คลาดเคลื่อน
+                    const d = new Date(str);
+                    if (!isNaN(d.getTime())) {
+                        const year = d.getFullYear();
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    }
+
                     if (str.includes('/')) {
                         const parts = str.split('/');
                         if (parts.length === 3) {
@@ -520,13 +544,11 @@
                             return `${year}-${month}-${day}`;
                         }
                     }
-                    const d = new Date(str);
-                    if (!isNaN(d.getTime())) {
-                        const year = d.getFullYear();
-                        const month = String(d.getMonth() + 1).padStart(2, '0');
-                        const day = String(d.getDate()).padStart(2, '0');
-                        return `${year}-${month}-${day}`;
+                    
+                    if (str.includes('T')) {
+                        return str.split('T')[0];
                     }
+
                     return str;
                 };
 
@@ -550,7 +572,6 @@
                         
                         if(Array.isArray(data)) {
                             records.value = data.map(r => {
-                                // ดึงตัวเลขจริงจาก Google Sheet ตรงๆ โดยไม่มีการเขียนทับ
                                 return { 
                                     ...r, 
                                     date: normalizeDate(r.date),
@@ -566,9 +587,7 @@
                                 if(!masseuses.value.includes(m)) masseuses.value.push(m);
                             });
                             
-                            // ถอดระบบคำนวณอัตโนมัติออก เพื่อเคารพข้อมูลของ Google Sheet
                             saveToLocal();
-                            
                             showToast('โหลดข้อมูลจาก Google Sheet สำเร็จ');
                         } else if (data.error) {
                             throw new Error(data.error);
@@ -606,7 +625,6 @@
                         records.value.push(recordData);
                     }
 
-                    // สั่งคำนวณใหม่เฉพาะวันที่มีการบันทึกหรือแก้ไขเท่านั้น
                     recalculateSplitsForDate(recordData.date);
                     saveToLocal();
 
@@ -662,7 +680,6 @@
 
                         records.value = records.value.filter(r => r.id !== id);
                         
-                        // คำนวณใหม่เฉพาะวันที่มีการลบเคส
                         if (deletedDate) recalculateSplitsForDate(deletedDate);
                         
                         saveToLocal();
@@ -740,7 +757,6 @@
                         if (typeStr.includes('นวดเท้า')) result.footCases++;
                         if (typeStr.includes('นวดบ่า')) result.shoulderCases++;
                         
-                        // อ้างอิงตัวเลขมาจาก Sheet อย่างเดียวโดยไม่โดนแก้ไขจากระบบ
                         result.totalRevenue += Number(r.price) || 0;
                         result.totalHospital += Number(r.hospitalCut) || 0;
                         result.totalCentral += Number(r.centralCut) || 0;
